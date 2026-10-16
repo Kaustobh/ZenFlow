@@ -29,6 +29,7 @@ export const StructureMap: React.FC<StructureMapProps> = ({ show, onClose }) => 
   const counts = {
     frames: 0,
     stickyNotes: 0,
+    texts: 0,
     shapes: 0,
     lines: 0,
   }
@@ -37,6 +38,7 @@ export const StructureMap: React.FC<StructureMapProps> = ({ show, onClose }) => 
     if (!obj) return
     if (obj.type === "frame") counts.frames++
     else if (obj.type === "sticky-note") counts.stickyNotes++
+    else if (obj.type === "text") counts.texts++
     else if (obj.type === "rectangle" || obj.type === "circle") counts.shapes++
     else if (obj.type === "line" || obj.type === "pen") counts.lines++
   })
@@ -207,30 +209,36 @@ export const StructureMap: React.FC<StructureMapProps> = ({ show, onClose }) => 
       </div>
 
       {/* Overview Stats */}
-      <div className={`p-3 grid grid-cols-4 gap-1.5 border-b ${isHearth ? "border-stone-800" : "border-stone-200/70"} text-xs`}>
-        <div className={`p-2 rounded-lg border flex flex-col items-center ${
+      <div className={`p-3 grid grid-cols-5 gap-1 border-b ${isHearth ? "border-stone-800" : "border-stone-200/70"} text-xs`}>
+        <div className={`p-1.5 rounded-lg border flex flex-col items-center ${
           isHearth ? "bg-stone-900/80 border-stone-800 text-stone-200" : "bg-stone-100/70 border-stone-200/60 text-stone-800"
         }`}>
-          <span className="text-stone-400 text-[10px]">Frames</span>
-          <span className={`font-bold text-sm ${isHearth ? "text-stone-100" : "text-stone-900"}`}>{counts.frames}</span>
+          <span className="text-stone-400 text-[9px]">Frames</span>
+          <span className={`font-bold text-xs ${isHearth ? "text-stone-100" : "text-stone-900"}`}>{counts.frames}</span>
         </div>
-        <div className={`p-2 rounded-lg border flex flex-col items-center ${
+        <div className={`p-1.5 rounded-lg border flex flex-col items-center ${
           isHearth ? "bg-stone-900/80 border-stone-800 text-stone-200" : "bg-stone-100/70 border-stone-200/60 text-stone-800"
         }`}>
-          <span className="text-stone-400 text-[10px]">Notes</span>
-          <span className={`font-bold text-sm ${isHearth ? "text-stone-100" : "text-stone-900"}`}>{counts.stickyNotes}</span>
+          <span className="text-stone-400 text-[9px]">Notes</span>
+          <span className={`font-bold text-xs ${isHearth ? "text-stone-100" : "text-stone-900"}`}>{counts.stickyNotes}</span>
         </div>
-        <div className={`p-2 rounded-lg border flex flex-col items-center ${
+        <div className={`p-1.5 rounded-lg border flex flex-col items-center ${
           isHearth ? "bg-stone-900/80 border-stone-800 text-stone-200" : "bg-stone-100/70 border-stone-200/60 text-stone-800"
         }`}>
-          <span className="text-stone-400 text-[10px]">Shapes</span>
-          <span className={`font-bold text-sm ${isHearth ? "text-stone-100" : "text-stone-900"}`}>{counts.shapes}</span>
+          <span className="text-stone-400 text-[9px]">Texts</span>
+          <span className={`font-bold text-xs ${isHearth ? "text-stone-100" : "text-stone-900"}`}>{counts.texts}</span>
         </div>
-        <div className={`p-2 rounded-lg border flex flex-col items-center ${
+        <div className={`p-1.5 rounded-lg border flex flex-col items-center ${
           isHearth ? "bg-stone-900/80 border-stone-800 text-stone-200" : "bg-stone-100/70 border-stone-200/60 text-stone-800"
         }`}>
-          <span className="text-stone-400 text-[10px]">Lines</span>
-          <span className={`font-bold text-sm ${isHearth ? "text-stone-100" : "text-stone-900"}`}>{counts.lines}</span>
+          <span className="text-stone-400 text-[9px]">Shapes</span>
+          <span className={`font-bold text-xs ${isHearth ? "text-stone-100" : "text-stone-900"}`}>{counts.shapes}</span>
+        </div>
+        <div className={`p-1.5 rounded-lg border flex flex-col items-center ${
+          isHearth ? "bg-stone-900/80 border-stone-800 text-stone-200" : "bg-stone-100/70 border-stone-200/60 text-stone-800"
+        }`}>
+          <span className="text-stone-400 text-[9px]">Lines</span>
+          <span className={`font-bold text-xs ${isHearth ? "text-stone-100" : "text-stone-900"}`}>{counts.lines}</span>
         </div>
       </div>
 

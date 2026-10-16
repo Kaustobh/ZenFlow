@@ -1,7 +1,7 @@
 // Zustand store for Miro-like canvas state management
 import { create } from 'zustand'
 import { devtools, persist } from 'zustand/middleware'
-import { CanvasObject, ToolType, Point, BoardRecord } from '../../types'
+import { CanvasObject, ToolType, Point, BoardRecord, LineObject } from '../../types'
 
 const createDefaultBoardRecord = (
   id = "default-board",
@@ -148,6 +148,8 @@ interface CanvasState {
   addObject: (object: CanvasObject) => void
   updateObject: (id: string, updates: Partial<CanvasObject>, recordHistory?: boolean) => void
   batchUpdateObjects: (ids: string[], updates: Partial<CanvasObject>, recordHistory?: boolean) => void
+  batchUpdateRecord: (updatesMap: Record<string, Partial<CanvasObject>>, recordHistory?: boolean) => void
+  nudgeObjects: (ids: string[], dx: number, dy: number, recordHistory?: boolean) => void
   deleteObject: (id: string) => void
   deleteSelectedObjects: () => void
   selectObject: (id: string, additive?: boolean) => void
@@ -589,6 +591,54 @@ export const useCanvasStore = create<CanvasState>()(
           })
         },
 
+        batchUpdateRecord: (updatesMap, recordHistory = false) => {
+          set((state) => {
+            const newObjects = { ...state.objects }
+            const now = new Date().toISOString()
+            let hasChanged = false
+            for (const [id, updates] of Object.entries(updatesMap)) {
+              if (newObjects[id]) {
+                newObjects[id] = {
+                  ...newObjects[id],
+                  ...updates,
+                  updatedAt: now,
+                } as CanvasObject
+                hasChanged = true
+              }
+            }
+            if (!hasChanged) return state
+            return {
+              past: recordHistory ? [...state.past.slice(-25), state.objects] : state.past,
+              future: recordHistory ? [] : state.future,
+              objects: newObjects,
+            }
+          })
+        },
+
+        nudgeObjects: (ids, dx, dy, recordHistory = false) => {
+          set((state) => {
+            const newObjects = { ...state.objects }
+            let hasChanged = false
+            ids.forEach((id) => {
+              const obj = newObjects[id]
+              if (obj) {
+                newObjects[id] = {
+                  ...obj,
+                  x: Math.round(obj.x + dx),
+                  y: Math.round(obj.y + dy),
+                }
+                hasChanged = true
+              }
+            })
+            if (!hasChanged) return state
+            return {
+              past: recordHistory ? [...state.past.slice(-25), state.objects] : state.past,
+              future: recordHistory ? [] : state.future,
+              objects: newObjects,
+            }
+          })
+        },
+
         deleteObject: (id) => {
           const current = get().objects
           set((state) => {
@@ -667,12 +717,22 @@ export const useCanvasStore = create<CanvasState>()(
 
           const newObjects = { ...objects }
           const newSelectedIds: string[] = []
+          const idMap: Record<string, string> = {}
 
+          // First pass: generate new IDs for all duplicated objects
+          selectedObjectIds.forEach((id) => {
+            if (objects[id]) {
+              idMap[id] = crypto.randomUUID()
+            }
+          })
+
+          // Second pass: clone objects and remap line endpoints if connected objects were also duplicated
           selectedObjectIds.forEach((id) => {
             const original = objects[id]
             if (!original) return
-            const newId = crypto.randomUUID()
-            const clone = {
+            const newId = idMap[id]
+
+            const clone: any = {
               ...original,
               id: newId,
               x: original.x + 24,
@@ -680,6 +740,17 @@ export const useCanvasStore = create<CanvasState>()(
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
             }
+
+            if (clone.type === "line") {
+              const line = clone as LineObject
+              if (line.fromId && idMap[line.fromId]) {
+                line.fromId = idMap[line.fromId]
+              }
+              if (line.toId && idMap[line.toId]) {
+                line.toId = idMap[line.toId]
+              }
+            }
+
             newObjects[newId] = clone as CanvasObject
             newSelectedIds.push(newId)
           })
@@ -877,28 +948,30 @@ export const useCanvasStore = create<CanvasState>()(
         },
 
         undo: () => {
-          const { past, future, objects } = get()
+          const { past, future, objects, selectedObjectIds } = get()
           if (past.length === 0) return
           const previous = past[past.length - 1]
           const newPast = past.slice(0, past.length - 1)
+          const preservedSelection = selectedObjectIds.filter((id) => Boolean(previous[id]))
           set({
             objects: previous,
             past: newPast,
             future: [objects, ...future],
-            selectedObjectIds: [],
+            selectedObjectIds: preservedSelection,
           })
         },
 
         redo: () => {
-          const { past, future, objects } = get()
+          const { past, future, objects, selectedObjectIds } = get()
           if (future.length === 0) return
           const next = future[0]
           const newFuture = future.slice(1)
+          const preservedSelection = selectedObjectIds.filter((id) => Boolean(next[id]))
           set({
             objects: next,
             past: [...past, objects],
             future: newFuture,
-            selectedObjectIds: [],
+            selectedObjectIds: preservedSelection,
           })
         },
       }),
@@ -909,8 +982,8 @@ export const useCanvasStore = create<CanvasState>()(
             id: state.activeBoardId,
             title: state.boardTitle,
             objects: state.objects,
-            past: state.past,
-            future: state.future,
+            past: [], // Strip heavy history snapshots from localStorage to prevent 5MB quota crash
+            future: [],
             zoomLevel: state.zoomLevel,
             offsetX: state.offsetX,
             offsetY: state.offsetY,
@@ -918,12 +991,20 @@ export const useCanvasStore = create<CanvasState>()(
             createdAt: state.boards[state.activeBoardId]?.createdAt || new Date().toISOString(),
             updatedAt: new Date().toISOString(),
           }
+
+          const sanitizedBoards: Record<string, BoardRecord> = {}
+          Object.entries(state.boards || {}).forEach(([bId, bRecord]) => {
+            sanitizedBoards[bId] = {
+              ...bRecord,
+              past: [],
+              future: [],
+            }
+          })
+          sanitizedBoards[state.activeBoardId] = currentBoard
+
           return {
             activeBoardId: state.activeBoardId,
-            boards: {
-              ...state.boards,
-              [state.activeBoardId]: currentBoard,
-            },
+            boards: sanitizedBoards,
             objects: state.objects,
             selectedObjectIds: state.selectedObjectIds,
             zoomLevel: state.zoomLevel,

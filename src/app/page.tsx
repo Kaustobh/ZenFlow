@@ -52,10 +52,15 @@ export default function Home() {
   // Quick keyboard shortcuts for Zen Mode, Board Creation & Switcher
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement ||
+        document.activeElement instanceof HTMLInputElement ||
+        document.activeElement instanceof HTMLTextAreaElement
+      ) {
         return
       }
-      if (e.key.toLowerCase() === "z" && !e.ctrlKey && !e.metaKey) {
+      if (e.shiftKey && e.key.toLowerCase() === "z" && !e.ctrlKey && !e.metaKey) {
         setIsZenMode((prev) => !prev)
       }
       if ((e.ctrlKey || e.metaKey) && e.altKey && e.key.toLowerCase() === "n") {
@@ -88,15 +93,60 @@ export default function Home() {
     return () => window.removeEventListener("mousedown", handleClickOutside)
   }, [showExportMenu, showSettingsMenu])
 
-  // Export handlers
+  // Export handlers (Full-Diagram Uncropped Vector & Bitmap Export)
   const handleExportPNG = () => {
-    const canvas = document.querySelector("canvas")
-    if (!canvas) return
-    const link = document.createElement("a")
-    link.download = `${boardTitle.toLowerCase().replace(/\s+/g, "-")}-${new Date().toISOString().slice(0, 10)}.png`
-    link.href = canvas.toDataURL("image/png")
-    link.click()
-    setShowExportMenu(false)
+    const objectList = Object.values(objects)
+    if (objectList.length === 0) {
+      const canvas = document.querySelector("canvas")
+      if (!canvas) return
+      const link = document.createElement("a")
+      link.download = `${boardTitle.toLowerCase().replace(/\s+/g, "-")}-${new Date().toISOString().slice(0, 10)}.png`
+      link.href = canvas.toDataURL("image/png")
+      link.click()
+      setShowExportMenu(false)
+      return
+    }
+
+    // Generate full-bounds uncropped SVG and render to 2x offscreen canvas
+    const svgString = exportToSVG(objects, atmosphere)
+    const blob = new Blob([svgString], { type: "image/svg+xml;charset=utf-8" })
+    const url = URL.createObjectURL(blob)
+    const img = new Image()
+
+    img.onload = () => {
+      const offscreen = document.createElement("canvas")
+      const scale = 2
+      const baseW = img.naturalWidth || 1200
+      const baseH = img.naturalHeight || 900
+      offscreen.width = baseW * scale
+      offscreen.height = baseH * scale
+      const ctx = offscreen.getContext("2d")
+      if (ctx) {
+        ctx.scale(scale, scale)
+        ctx.drawImage(img, 0, 0)
+        const link = document.createElement("a")
+        link.download = `${boardTitle.toLowerCase().replace(/\s+/g, "-")}-${new Date().toISOString().slice(0, 10)}.png`
+        link.href = offscreen.toDataURL("image/png")
+        link.click()
+      }
+      URL.revokeObjectURL(url)
+      setShowExportMenu(false)
+    }
+
+    img.onerror = () => {
+      // Fallback to direct canvas capture if image load is blocked
+      const canvas = document.querySelector("canvas")
+      if (canvas) {
+        const link = document.createElement("a")
+        link.download = `${boardTitle.toLowerCase().replace(/\s+/g, "-")}-${new Date().toISOString().slice(0, 10)}.png`
+        link.href = canvas.toDataURL("image/png")
+        link.click()
+      }
+      URL.revokeObjectURL(url)
+      setShowExportMenu(false)
+    }
+
+    img.src = url
   }
 
   const handleExportSVG = () => {
@@ -519,7 +569,7 @@ export default function Home() {
                   ? "bg-[#20201e]/90 hover:bg-[#282825] text-stone-200 border-stone-800"
                   : "bg-white/90 hover:bg-stone-50 text-stone-700 border-stone-200/90"
               }`}
-              title="Zen Focus Mode (Press Z)"
+              title="Zen Focus Mode (Shift+Z)"
             >
               <svg className="w-3.5 h-3.5 text-[#c25e3e]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="8" strokeDasharray="3 3" />
@@ -536,9 +586,9 @@ export default function Home() {
         <button
           onClick={() => setIsZenMode(false)}
           className="absolute top-4 right-4 z-50 px-3.5 py-1.5 rounded-xl bg-stone-900 hover:bg-stone-800 text-stone-50 backdrop-blur-md text-xs font-medium transition-all shadow-lg border border-stone-700"
-          title="Exit Focus Mode (Press Z)"
+          title="Exit Focus Mode (Shift+Z)"
         >
-          Exit Focus (Z)
+          Exit Focus (Shift+Z)
         </button>
       )}
 

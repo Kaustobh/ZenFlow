@@ -142,14 +142,21 @@ export function exportToSVG(objects: Record<string, CanvasObject>, atmosphere: "
       const note = obj as StickyNoteObject
       svgContent += `  <rect x="${note.x}" y="${note.y}" width="${note.width}" height="${note.height}" rx="8" fill="${note.color || note.fill || "#fefae0"}" stroke="rgba(0,0,0,0.08)" stroke-width="1" />\n`
       const lines = (note.content || "").split("\n")
-      let lineY = note.y + 24
-      lines.forEach((l) => {
-        svgContent += `  <text x="${note.x + 14}" y="${lineY}" font-family="sans-serif" font-size="13" fill="#1c1917">${escapeXml(l)}</text>\n`
-        lineY += 18
+      svgContent += `  <text x="${note.x + 14}" y="${note.y + 24}" font-family="Plus Jakarta Sans, sans-serif" font-size="13" fill="#1c1917">\n`
+      lines.forEach((l, idx) => {
+        svgContent += `    <tspan x="${note.x + 14}" ${idx > 0 ? 'dy="1.4em"' : ''}>${escapeXml(l)}</tspan>\n`
       })
+      svgContent += `  </text>\n`
     } else if (obj.type === "text") {
       const text = obj as TextObject
-      svgContent += `  <text x="${text.x}" y="${text.y + 20}" font-family="${text.fontFamily || "sans-serif"}" font-size="${text.fontSize || 18}" fill="${text.fill || defaultStroke}">${escapeXml(text.content || "")}</text>\n`
+      const lines = (text.content || "").split("\n")
+      const fontSize = text.fontSize || 18
+      const startY = text.y + fontSize
+      svgContent += `  <text x="${text.x}" y="${startY}" font-family="${text.fontFamily || "Plus Jakarta Sans, sans-serif"}" font-size="${fontSize}" fill="${text.fill || defaultStroke}">\n`
+      lines.forEach((l, idx) => {
+        svgContent += `    <tspan x="${text.x}" ${idx > 0 ? 'dy="1.35em"' : ''}>${escapeXml(l)}</tspan>\n`
+      })
+      svgContent += `  </text>\n`
     } else if (obj.type === "line") {
       const line = obj as LineObject
       let p1 = line.points?.[0] || { x: line.x, y: line.y }

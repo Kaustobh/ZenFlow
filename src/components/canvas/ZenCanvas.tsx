@@ -51,11 +51,11 @@ export const calculateNoteHeight = (
     }
   }
 
-  const computed = padding * 2 + totalLineSlots * 22 + 14
+  const computed = padding * 2 + totalLineSlots * 20 + 14
   return Math.max(computed, minHeight)
 }
 
-const JAPANDI_FONT_FAMILY = "var(--font-geist-sans), -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Noto Sans JP', 'Segoe UI', Roboto, sans-serif"
+const JAPANDI_FONT_FAMILY = "Plus Jakarta Sans, -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Noto Sans JP', 'Segoe UI', Roboto, sans-serif"
 
 export const ZenCanvas: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -83,9 +83,13 @@ export const ZenCanvas: React.FC = () => {
     setCurrentTool,
     addObject,
     updateObject,
+    batchUpdateObjects,
+    batchUpdateRecord,
+    nudgeObjects,
     selectObject,
     selectMultipleObjects,
     clearSelection,
+    deleteObject,
     deleteSelectedObjects,
     duplicateSelectedObjects,
     spawnAdjacentNote,
@@ -105,6 +109,11 @@ export const ZenCanvas: React.FC = () => {
   const [dragStartScreen, setDragStartScreen] = useState<Point>({ x: 0, y: 0 })
   const [dragStartCanvas, setDragStartCanvas] = useState<Point>({ x: 0, y: 0 })
   const [currentCanvasPoint, setCurrentCanvasPoint] = useState<Point>({ x: 0, y: 0 })
+  const currentCanvasPointRef = useRef<Point>({ x: 0, y: 0 })
+  const lastSnapSoundTimeRef = useRef<number>(0)
+  const touchStartDistRef = useRef<number | null>(null)
+  const touchStartZoomRef = useRef<number>(1)
+  const lastTouchCenterRef = useRef<Point | null>(null)
   const [penPoints, setPenPoints] = useState<Point[]>([])
   const [interactionMode, setInteractionMode] = useState<
     "idle" | "panning" | "drawing" | "moving" | "resizing" | "selecting"
@@ -156,6 +165,14 @@ export const ZenCanvas: React.FC = () => {
     }
     return null
   }, [objects])
+
+  const playThrottledAnchorSnap = useCallback(() => {
+    const now = Date.now()
+    if (now - lastSnapSoundTimeRef.current >= 120) {
+      lastSnapSoundTimeRef.current = now
+      acoustics.playAnchorSnap()
+    }
+  }, [])
 
   const computeBezierParams = useCallback(
     (
@@ -442,8 +459,8 @@ export const ZenCanvas: React.FC = () => {
 
   // Start inline editing for any canvas object (frame, rectangle, circle, line, note, text)
   const startEditingObject = useCallback(
-    (id: string) => {
-      const obj = objects[id]
+    (id: string, overrideObj?: CanvasObject) => {
+      const obj = overrideObj || objects[id]
       if (!obj) return
 
       const zoom = Number.isFinite(zoomLevel) && zoomLevel > 0 ? zoomLevel : 1
@@ -465,14 +482,15 @@ export const ZenCanvas: React.FC = () => {
       if (obj.type === "rectangle" || obj.type === "circle") {
         const screenPos = canvasToScreen(obj.x, obj.y)
         const objW = (obj.width || 100) * zoom
-        const editW = Math.max(Math.min(objW, 220), 130)
+        const objH = (obj.height || 60) * zoom
+        const editW = Math.max(Math.min(objW - 16, 260), 120)
         setEditingId(id)
         setEditingContent((obj as any).label || (obj as any).title || "")
         setEditingPos({
           x: screenPos.x + Math.max(0, (objW - editW) / 2),
-          y: screenPos.y - 32,
+          y: screenPos.y + (objH - 32) / 2,
           width: editW,
-          height: 28,
+          height: 32,
         })
         return
       }
@@ -496,7 +514,20 @@ export const ZenCanvas: React.FC = () => {
         return
       }
 
-      if (obj.type === "sticky-note" || obj.type === "text") {
+      if (obj.type === "text") {
+        const screenPos = canvasToScreen(obj.x, obj.y)
+        setEditingId(id)
+        setEditingContent((obj as any).content || "")
+        setEditingPos({
+          x: screenPos.x,
+          y: screenPos.y,
+          width: Math.max((obj.width || 240) * zoom, 200),
+          height: Math.max((obj.height || 44) * zoom, 44),
+        })
+        return
+      }
+
+      if (obj.type === "sticky-note") {
         const screenPos = canvasToScreen(obj.x, obj.y)
         setEditingId(id)
         setEditingContent((obj as any).content || "")
@@ -514,7 +545,14 @@ export const ZenCanvas: React.FC = () => {
   // Listen to Keyboard shortcuts (with Number Keys 1-6 for instant palette switching & arrow nudging)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+      // Strictly block all canvas shortcuts if an inline editor is open or an input/textarea is focused
+      if (
+        editingId ||
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement ||
+        document.activeElement instanceof HTMLInputElement ||
+        document.activeElement instanceof HTMLTextAreaElement
+      ) {
         return
       }
 
@@ -565,17 +603,24 @@ export const ZenCanvas: React.FC = () => {
       ) {
         e.preventDefault()
         const step = e.shiftKey ? 10 : 2
-        selectedObjectIds.forEach((id) => {
-          const obj = objects[id]
-          if (!obj) return
-          let dx = 0
-          let dy = 0
-          if (e.key === "ArrowUp") dy = -step
-          if (e.key === "ArrowDown") dy = step
-          if (e.key === "ArrowLeft") dx = -step
-          if (e.key === "ArrowRight") dx = step
-          updateObject(id, { x: obj.x + dx, y: obj.y + dy })
-        })
+        let dx = 0
+        let dy = 0
+        if (e.key === "ArrowUp") dy = -step
+        if (e.key === "ArrowDown") dy = step
+        if (e.key === "ArrowLeft") dx = -step
+        if (e.key === "ArrowRight") dx = step
+        nudgeObjects(selectedObjectIds, dx, dy, true)
+      } else if (!editingId && e.key === "Tab") {
+        e.preventDefault()
+        const objectIds = Object.keys(objects)
+        if (objectIds.length > 0) {
+          const currentIndex = selectedObjectIds.length === 1 ? objectIds.indexOf(selectedObjectIds[0]) : -1
+          const nextIndex = e.shiftKey
+            ? (currentIndex <= 0 ? objectIds.length - 1 : currentIndex - 1)
+            : (currentIndex >= objectIds.length - 1 ? 0 : currentIndex + 1)
+          selectObject(objectIds[nextIndex])
+          acoustics.playPaperDrop()
+        }
       } else if (selectedObjectIds.length === 1 && ["1", "2", "3", "4", "5", "6"].includes(e.key)) {
         // Instant palette hotkey 1-6
         const idx = parseInt(e.key) - 1
@@ -602,7 +647,7 @@ export const ZenCanvas: React.FC = () => {
           f: "frame",
         }
         const key = e.key.toLowerCase()
-        if (key in toolMap) {
+        if (!e.ctrlKey && !e.metaKey && !e.altKey && key in toolMap) {
           setCurrentTool(toolMap[key])
         }
       }
@@ -614,11 +659,92 @@ export const ZenCanvas: React.FC = () => {
       }
     }
 
+    // Global Paste Listener for Text & Sticky Notes
+    const handlePaste = (e: ClipboardEvent) => {
+      if (
+        editingId ||
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement ||
+        document.activeElement instanceof HTMLInputElement ||
+        document.activeElement instanceof HTMLTextAreaElement
+      ) {
+        return
+      }
+
+      const text = e.clipboardData?.getData("text")
+      if (!text || !text.trim()) return
+
+      e.preventDefault()
+
+      let targetPt = currentCanvasPointRef.current
+      if (!targetPt || (targetPt.x === 0 && targetPt.y === 0)) {
+        const container = containerRef.current
+        const cx = container ? container.clientWidth / 2 : (typeof window !== "undefined" ? window.innerWidth / 2 : 600)
+        const cy = container ? container.clientHeight / 2 : (typeof window !== "undefined" ? window.innerHeight / 2 : 400)
+        targetPt = screenToCanvas(cx, cy)
+      }
+
+      const id = crypto.randomUUID()
+      const now = new Date().toISOString()
+      const trimmed = text.trim()
+      const isMultiParagraph = trimmed.includes("\n\n") || (trimmed.includes("\n") && trimmed.length > 80)
+
+      if (isMultiParagraph) {
+        const randomColor = ATELIER_PALETTE[Math.floor(Math.random() * ATELIER_PALETTE.length)]
+        const reqH = calculateNoteHeight(trimmed, 240, 160)
+        const noteObj: StickyNoteObject = {
+          id,
+          type: "sticky-note",
+          x: Math.round(targetPt.x),
+          y: Math.round(targetPt.y),
+          width: 240,
+          height: reqH,
+          color: randomColor,
+          fill: randomColor,
+          content: trimmed,
+          stroke: "rgba(0,0,0,0.08)",
+          strokeWidth: 1,
+          opacity: 1,
+          createdAt: now,
+          updatedAt: now,
+          createdBy: "user",
+        }
+        addObject(noteObj)
+        selectObject(id)
+        acoustics.playPaperDrop()
+      } else {
+        const lines = trimmed.split("\n")
+        const estH = Math.max(lines.length * 28 + 14, 44)
+        const textObj: TextObject = {
+          id,
+          type: "text",
+          x: Math.round(targetPt.x),
+          y: Math.round(targetPt.y),
+          width: Math.min(Math.max(trimmed.length * 11, 240), 600),
+          height: estH,
+          content: trimmed,
+          fontSize: 18,
+          fontFamily: JAPANDI_FONT_FAMILY,
+          textAlign: "left",
+          fill: atmosphere === "hearth" ? "#e7e5e4" : "#1c1917",
+          opacity: 1,
+          createdAt: now,
+          updatedAt: now,
+          createdBy: "user",
+        }
+        addObject(textObj)
+        selectObject(id)
+        acoustics.playPaperDrop()
+      }
+    }
+
     window.addEventListener("keydown", handleKeyDown)
     window.addEventListener("keyup", handleKeyUp)
+    window.addEventListener("paste", handlePaste)
     return () => {
       window.removeEventListener("keydown", handleKeyDown)
       window.removeEventListener("keyup", handleKeyUp)
+      window.removeEventListener("paste", handlePaste)
     }
   }, [
     deleteSelectedObjects,
@@ -634,6 +760,10 @@ export const ZenCanvas: React.FC = () => {
     resetView,
     startEditingObject,
     editingId,
+    addObject,
+    selectObject,
+    screenToCanvas,
+    atmosphere,
   ])
 
   // Get Resize Handle at canvas point
@@ -740,6 +870,11 @@ export const ZenCanvas: React.FC = () => {
 
   // Double click: edit existing note/shape/frame or instant-create new sticky note on empty canvas
   const handleDoubleClick = (e: React.MouseEvent) => {
+    if (editingId) {
+      commitInlineEdit()
+      return
+    }
+
     const point = screenToCanvas(e.clientX, e.clientY)
     const clickedId = getObjectAtPoint(point)
 
@@ -818,7 +953,7 @@ export const ZenCanvas: React.FC = () => {
       }
       addObject(newNote)
       selectObject(id)
-      startEditingObject(id)
+      startEditingObject(id, newNote)
       return
     }
 
@@ -834,10 +969,14 @@ export const ZenCanvas: React.FC = () => {
 
     if (editingId) {
       commitInlineEdit()
+      setIsInteracting(false)
+      setInteractionMode("idle")
+      return
     }
 
     const screenPt = { x: e.clientX, y: e.clientY }
     const canvasPt = screenToCanvas(e.clientX, e.clientY)
+    currentCanvasPointRef.current = canvasPt
     setDragStartScreen(screenPt)
     setDragStartCanvas(canvasPt)
     setCurrentCanvasPoint(canvasPt)
@@ -903,12 +1042,20 @@ export const ZenCanvas: React.FC = () => {
       } else {
         setLineStartAnchor(null)
       }
+    } else if (currentTool === "text") {
+      const clickedId = getObjectAtPoint(canvasPt)
+      if (clickedId) {
+        selectObject(clickedId)
+        setCurrentTool("select")
+        startEditingObject(clickedId)
+        return
+      }
+      setInteractionMode("drawing")
     } else if (
       currentTool === "rectangle" ||
       currentTool === "circle" ||
       currentTool === "frame" ||
-      currentTool === "sticky-note" ||
-      currentTool === "text"
+      currentTool === "sticky-note"
     ) {
       setInteractionMode("drawing")
     }
@@ -918,6 +1065,7 @@ export const ZenCanvas: React.FC = () => {
   const handleMouseMove = (e: React.MouseEvent) => {
     const canvasPt = screenToCanvas(e.clientX, e.clientY)
     setCurrentCanvasPoint(canvasPt)
+    currentCanvasPointRef.current = canvasPt
 
     if (!isInteracting) return
 
@@ -971,7 +1119,7 @@ export const ZenCanvas: React.FC = () => {
       }
 
       if ((snappedX !== undefined || snappedY !== undefined) && !snapGuides.x && !snapGuides.y) {
-        acoustics.playAnchorSnap()
+        playThrottledAnchorSnap()
       }
       setSnapGuides({ x: snappedX, y: snappedY })
 
@@ -997,17 +1145,10 @@ export const ZenCanvas: React.FC = () => {
         }
       })
 
-      movingIds.forEach((id) => {
-        const obj = objects[id]
-        if (obj) {
-          updateObject(id, {
-            x: Math.round(obj.x + dx),
-            y: Math.round(obj.y + dy),
-          })
-        }
-      })
+      nudgeObjects(Array.from(movingIds), dx, dy, false)
 
       // Dynamically track connected line arrows
+      const lineUpdates: Record<string, Partial<CanvasObject>> = {}
       Object.values(objects).forEach((o) => {
         if (o.type === "line") {
           const line = o as LineObject
@@ -1028,22 +1169,25 @@ export const ZenCanvas: React.FC = () => {
             changed = true
           }
           if (changed) {
-            updateObject(line.id, {
+            lineUpdates[line.id] = {
               points: [p0, p1],
               x: Math.min(p0.x, p1.x),
               y: Math.min(p0.y, p1.y),
               width: Math.abs(p1.x - p0.x),
               height: Math.abs(p1.y - p0.y),
-            })
+            }
           }
         }
       })
+      if (Object.keys(lineUpdates).length > 0) {
+        batchUpdateRecord(lineUpdates, false)
+      }
 
       setDragStartCanvas(canvasPt)
     } else if (interactionMode === "drawing" && currentTool === "line") {
       const anchor = findNearestAnchor(canvasPt, lineStartAnchor?.objectId)
       if (anchor) {
-        if (!hoveredAnchor) acoustics.playAnchorSnap()
+        if (!hoveredAnchor) playThrottledAnchorSnap()
         setHoveredAnchor(anchor)
         setCurrentCanvasPoint(anchor.point)
       } else {
@@ -1080,7 +1224,7 @@ export const ZenCanvas: React.FC = () => {
   }
 
   // Mouse Up handler (Kick off Kinetic Pan Inertia & Marquee selections)
-  const handleMouseUp = () => {
+  const handleMouseUp = (e?: React.MouseEvent | any) => {
     if (!isInteracting) return
 
     // Trigger Inertial Pan Momentum if released with velocity
@@ -1156,8 +1300,8 @@ export const ZenCanvas: React.FC = () => {
       } else if (currentTool === "line") {
         const endAnchor = findNearestAnchor(p2, lineStartAnchor?.objectId)
 
-        if (lineStartAnchor && !endAnchor && Math.hypot(p2.x - p1.x, p2.y - p1.y) > 60) {
-          // Instant Quick-Spawn connected note
+        if (lineStartAnchor && !endAnchor && Math.hypot(p2.x - p1.x, p2.y - p1.y) > 60 && e?.altKey) {
+          // Instant Quick-Spawn connected note (triggered only when Alt is explicitly held)
           const newNoteId = crypto.randomUUID()
           const oppositeAnchor: Record<'n'|'e'|'s'|'w', 'n'|'e'|'s'|'w'> = {
             n: 's',
@@ -1234,9 +1378,9 @@ export const ZenCanvas: React.FC = () => {
           const finalP1 = lineStartAnchor ? lineStartAnchor.point : p1
           const finalP2 = endAnchor ? endAnchor.point : p2
 
-          // Prevent stray zero-length arrows pointing to nowhere on accidental clicks
+          // Prevent stray zero-length arrows pointing to nowhere on accidental micro-clicks
           const dragDist = Math.hypot(finalP2.x - finalP1.x, finalP2.y - finalP1.y)
-          if (!lineStartAnchor && !endAnchor && dragDist < 25) {
+          if (!lineStartAnchor && !endAnchor && dragDist < 3) {
             setLineStartAnchor(null)
             setHoveredAnchor(null)
             setCurrentTool("select")
@@ -1342,11 +1486,11 @@ export const ZenCanvas: React.FC = () => {
           type: "text",
           x: p1.x,
           y: p1.y,
-          width: 220,
-          height: 40,
+          width: 240,
+          height: 44,
           content: "",
           fontSize: 18,
-          fontFamily: "var(--font-geist-sans), sans-serif",
+          fontFamily: JAPANDI_FONT_FAMILY,
           textAlign: "left",
           fill: atmosphere === "hearth" ? "#e7e5e4" : "#1c1917",
           opacity: 1,
@@ -1357,21 +1501,24 @@ export const ZenCanvas: React.FC = () => {
         addObject(textObj)
         selectObject(textObj.id)
         setCurrentTool("select")
-        startEditingObject(textObj.id)
+        startEditingObject(textObj.id, textObj)
       }
-    } else if (interactionMode === "moving") {
-      if (selectedObjectIds.length === 1) {
-        const { vx, vy } = velocityRef.current
-        const speed = Math.hypot(vx, vy)
-        if (speed > 26) {
-          // Tactile Fling off board
-          acoustics.playFlingDisintegrate()
-          deleteSelectedObjects()
+    } else if (interactionMode === "moving" || interactionMode === "resizing") {
+      saveSnapshot()
+      if (interactionMode === "moving") {
+        if (selectedObjectIds.length === 1) {
+          const { vx, vy } = velocityRef.current
+          const speed = Math.hypot(vx, vy)
+          if (speed > 26) {
+            // Tactile Fling off board
+            acoustics.playFlingDisintegrate()
+            deleteSelectedObjects()
+          } else {
+            acoustics.playPaperDrop()
+          }
         } else {
           acoustics.playPaperDrop()
         }
-      } else {
-        acoustics.playPaperDrop()
       }
     } else if (interactionMode === "selecting") {
       // Marquee Box Selection
@@ -1406,30 +1553,142 @@ export const ZenCanvas: React.FC = () => {
     setHoveredAnchor(null)
   }
 
-  // Wheel zoom centered around cursor with rubber-band bounds
-  const handleWheel = (e: React.WheelEvent) => {
-    e.preventDefault()
+  // Wheel zoom centered around cursor with non-passive event listener
+  const zoomLevelRef = useRef(zoomLevel)
+  zoomLevelRef.current = zoomLevel
+  const offsetXRef = useRef(offsetX)
+  offsetXRef.current = offsetX
+  const offsetYRef = useRef(offsetY)
+  offsetYRef.current = offsetY
 
-    if (e.ctrlKey || e.metaKey) {
-      const zoomFactor = e.deltaY < 0 ? 1.08 : 0.92
-      const currentZoom = zoomLevel || 1
-      const newZoom = Math.min(Math.max(currentZoom * zoomFactor, 0.15), 4)
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault()
+
+      if (e.ctrlKey || e.metaKey) {
+        const zoomFactor = e.deltaY < 0 ? 1.08 : 0.92
+        const currentZoom = zoomLevelRef.current || 1
+        const newZoom = Math.min(Math.max(currentZoom * zoomFactor, 0.15), 4)
+
+        const canvas = canvasRef.current
+        if (!canvas) return
+        const rect = canvas.getBoundingClientRect()
+        const mouseX = e.clientX - rect.left
+        const mouseY = e.clientY - rect.top
+
+        const offX = offsetXRef.current || 0
+        const offY = offsetYRef.current || 0
+        const newOffsetX = mouseX - (mouseX - offX) * (newZoom / currentZoom)
+        const newOffsetY = mouseY - (mouseY - offY) * (newZoom / currentZoom)
+
+        setZoomLevel(newZoom)
+        setOffset(newOffsetX, newOffsetY)
+      } else {
+        panBy(-e.deltaX, -e.deltaY)
+      }
+    }
+
+    container.addEventListener("wheel", onWheel, { passive: false })
+    return () => {
+      container.removeEventListener("wheel", onWheel)
+    }
+  }, [panBy, setZoomLevel, setOffset])
+
+  // Mobile & Tablet Multi-Touch Gesture Engine
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      // 2-finger pinch/pan gesture
+      const touch1 = e.touches[0]
+      const touch2 = e.touches[1]
+      const dist = Math.hypot(touch2.clientX - touch1.clientX, touch2.clientY - touch1.clientY)
+      touchStartDistRef.current = dist
+      touchStartZoomRef.current = zoomLevel || 1
+      lastTouchCenterRef.current = {
+        x: (touch1.clientX + touch2.clientX) / 2,
+        y: (touch1.clientY + touch2.clientY) / 2,
+      }
+      setIsInteracting(false)
+      setInteractionMode("idle")
+    } else if (e.touches.length === 1) {
+      touchStartDistRef.current = null
+      lastTouchCenterRef.current = null
+      const touch = e.touches[0]
+      const syntheticMouseEvent = {
+        clientX: touch.clientX,
+        clientY: touch.clientY,
+        button: 0,
+        preventDefault: () => {},
+        stopPropagation: () => {},
+      } as any
+      handleMouseDown(syntheticMouseEvent)
+    }
+  }
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (e.touches.length === 2 && touchStartDistRef.current !== null && lastTouchCenterRef.current !== null) {
+      const touch1 = e.touches[0]
+      const touch2 = e.touches[1]
+      const dist = Math.hypot(touch2.clientX - touch1.clientX, touch2.clientY - touch1.clientY)
+      const center = {
+        x: (touch1.clientX + touch2.clientX) / 2,
+        y: (touch1.clientY + touch2.clientY) / 2,
+      }
+
+      const dx = center.x - lastTouchCenterRef.current.x
+      const dy = center.y - lastTouchCenterRef.current.y
+      lastTouchCenterRef.current = center
+
+      const scale = dist / touchStartDistRef.current
+      const newZoom = Math.min(Math.max(touchStartZoomRef.current * scale, 0.15), 4)
 
       const canvas = canvasRef.current
-      if (!canvas) return
-      const rect = canvas.getBoundingClientRect()
-      const mouseX = e.clientX - rect.left
-      const mouseY = e.clientY - rect.top
+      if (canvas) {
+        const rect = canvas.getBoundingClientRect()
+        const mouseX = center.x - rect.left
+        const mouseY = center.y - rect.top
+        const currentZoom = zoomLevelRef.current || 1
+        const offX = offsetXRef.current || 0
+        const offY = offsetYRef.current || 0
+        const newOffsetX = mouseX - (mouseX - offX) * (newZoom / currentZoom) + dx
+        const newOffsetY = mouseY - (mouseY - offY) * (newZoom / currentZoom) + dy
 
-      const offX = offsetX || 0
-      const offY = offsetY || 0
-      const newOffsetX = mouseX - (mouseX - offX) * (newZoom / currentZoom)
-      const newOffsetY = mouseY - (mouseY - offY) * (newZoom / currentZoom)
+        setZoomLevel(newZoom)
+        setOffset(newOffsetX, newOffsetY)
+      } else {
+        panBy(dx, dy)
+      }
+    } else if (e.touches.length === 1 && touchStartDistRef.current === null) {
+      const touch = e.touches[0]
+      const syntheticMouseEvent = {
+        clientX: touch.clientX,
+        clientY: touch.clientY,
+        preventDefault: () => {},
+        stopPropagation: () => {},
+      } as any
+      handleMouseMove(syntheticMouseEvent)
+    }
+  }
 
-      setZoomLevel(newZoom)
-      setOffset(newOffsetX, newOffsetY)
-    } else {
-      panBy(-e.deltaX, -e.deltaY)
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (e.touches.length < 2) {
+      touchStartDistRef.current = null
+      lastTouchCenterRef.current = null
+    }
+    if (e.touches.length === 0) {
+      handleMouseUp()
+    }
+  }
+
+  // Mobile virtual keyboard viewport adaptation
+  const handleFocusInput = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    e.target.select()
+    if (typeof window !== "undefined" && window.innerWidth <= 768) {
+      setTimeout(() => {
+        e.target.scrollIntoView({ behavior: "smooth", block: "center" })
+      }, 120)
     }
   }
 
@@ -1447,6 +1706,16 @@ export const ZenCanvas: React.FC = () => {
       } else if (obj.type === "sticky-note") {
         const reqH = calculateNoteHeight(editingContent, obj.width || 220, 140)
         updateObject(editingId, { content: editingContent, height: reqH } as any)
+      } else if (obj.type === "text") {
+        const text = editingContent
+        if (!text.trim()) {
+          deleteObject(editingId)
+        } else {
+          const lines = text.split("\n")
+          const estH = Math.max(lines.length * 28 + 14, 44)
+          const estW = Math.max(...lines.map((l) => l.length * 11 + 24), 220)
+          updateObject(editingId, { content: text, width: estW, height: estH } as any)
+        }
       } else {
         updateObject(editingId, { content: editingContent } as any)
       }
@@ -1485,15 +1754,45 @@ export const ZenCanvas: React.FC = () => {
       ctx.translate(offX, offY)
       ctx.scale(zoom, zoom)
 
-      // 1. Render Existing Canvas Objects safely with Elevation Physics
-      // 1. Render Existing Canvas Objects safely with Elevation Physics
+      // 1. Render Existing Canvas Objects safely with Elevation Physics & Frustum Culling
+      // Frustum Culling: Skip rendering objects outside visible viewport bounds (+ 120px buffer)
+      const buffer = 120
+      const viewMinX = -offX / zoom - buffer
+      const viewMinY = -offY / zoom - buffer
+      const viewMaxX = (width - offX) / zoom + buffer
+      const viewMaxY = (height - offY) / zoom + buffer
+
+      const isObjectInFrustum = (obj: CanvasObject) => {
+        if (!obj || !obj.id) return false
+        if (selectedObjectIds.includes(obj.id)) return true
+
+        const ox = obj.x ?? 0
+        const oy = obj.y ?? 0
+        const ow = Math.max(Math.abs(obj.width || 50), 10)
+        const oh = Math.max(Math.abs(obj.height || 50), 10)
+
+        if (obj.type === "pen") {
+          return ox + ow >= viewMinX && ox <= viewMaxX && oy + oh >= viewMinY && oy <= viewMaxY
+        }
+        if (obj.type === "line") {
+          const line = obj as LineObject
+          const p0 = line.points?.[0] || { x: ox, y: oy }
+          const p1 = line.points?.[1] || { x: ox + ow, y: oy + oh }
+          const minLX = Math.min(p0.x, p1.x) - 100
+          const maxLX = Math.max(p0.x, p1.x) + 100
+          const minLY = Math.min(p0.y, p1.y) - 100
+          const maxLY = Math.max(p0.y, p1.y) + 100
+          return maxLX >= viewMinX && minLX <= viewMaxX && maxLY >= viewMinY && minLY <= viewMaxY
+        }
+        return ox + ow >= viewMinX && ox <= viewMaxX && oy + oh >= viewMinY && oy <= viewMaxY
+      }
+
       // Render frames first so they sit as background mounting boards
       const objectList = Object.values(objects)
       const frames = objectList.filter((o) => o?.type === "frame")
       const nonFrames = objectList.filter((o) => o?.type !== "frame")
 
-      frames.forEach((obj) => {
-        if (!obj || !obj.id) return
+      frames.filter(isObjectInFrustum).forEach((obj) => {
         try {
           const isSelected = selectedObjectIds.includes(obj.id)
           const isLifted = isInteracting && interactionMode === "moving" && isSelected
@@ -1503,8 +1802,7 @@ export const ZenCanvas: React.FC = () => {
         }
       })
 
-      nonFrames.forEach((obj) => {
-        if (!obj || !obj.id) return
+      nonFrames.filter(isObjectInFrustum).forEach((obj) => {
         try {
           const isSelected = selectedObjectIds.includes(obj.id)
           const isLifted = isInteracting && interactionMode === "moving" && isSelected
@@ -1722,7 +2020,7 @@ export const ZenCanvas: React.FC = () => {
       ctx.roundRect(x, y, w, h, 12)
       ctx.fill()
 
-      ctx.strokeStyle = frame.stroke || (atmosphere === "hearth" ? "rgba(231, 229, 228, 0.3)" : "rgba(194, 94, 62, 0.45)")
+      ctx.strokeStyle = frame.stroke || (atmosphere === "hearth" ? "#3d3b38" : "rgba(194, 94, 62, 0.45)")
       ctx.lineWidth = frame.strokeWidth || 1.5
       ctx.setLineDash([6, 6])
       ctx.stroke()
@@ -1762,29 +2060,15 @@ export const ZenCanvas: React.FC = () => {
       if (obj.fill && obj.fill !== "transparent") ctx.fill()
       ctx.stroke()
 
-      // Render heading/label at top of rectangle
+      // Render text centered inside rectangle
       const label = (obj as any).label || (obj as any).title
       if (label && editingId !== obj.id) {
         ctx.save()
-        ctx.font = `bold 11px ${JAPANDI_FONT_FAMILY}`
-        const textMetrics = ctx.measureText(label)
-        const badgeW = textMetrics.width + 16
-        const badgeH = 20
-        const badgeX = x + Math.max(4, (w - badgeW) / 2)
-        const badgeY = y - badgeH - 3
-
-        ctx.fillStyle = atmosphere === "hearth" ? "rgba(32, 30, 29, 0.95)" : "rgba(250, 248, 245, 0.95)"
-        ctx.strokeStyle = atmosphere === "hearth" ? "rgba(231, 229, 228, 0.25)" : "rgba(28, 25, 23, 0.18)"
-        ctx.lineWidth = 1
-        ctx.beginPath()
-        ctx.roundRect(badgeX, badgeY, badgeW, badgeH, 4)
-        ctx.fill()
-        ctx.stroke()
-
+        ctx.font = `600 13px ${JAPANDI_FONT_FAMILY}`
         ctx.fillStyle = atmosphere === "hearth" ? "#e7e5e4" : "#1c1917"
         ctx.textAlign = "center"
         ctx.textBaseline = "middle"
-        ctx.fillText(label, badgeX + badgeW / 2, badgeY + badgeH / 2)
+        ctx.fillText(label, x + w / 2, y + h / 2)
         ctx.restore()
       }
     } else if (obj.type === "circle") {
@@ -1803,29 +2087,15 @@ export const ZenCanvas: React.FC = () => {
       if (obj.fill && obj.fill !== "transparent") ctx.fill()
       ctx.stroke()
 
-      // Render heading/label at top of circle
+      // Render text centered inside circle
       const label = (obj as any).label || (obj as any).title
       if (label && editingId !== obj.id) {
         ctx.save()
-        ctx.font = `bold 11px ${JAPANDI_FONT_FAMILY}`
-        const textMetrics = ctx.measureText(label)
-        const badgeW = textMetrics.width + 16
-        const badgeH = 20
-        const badgeX = x + (w - badgeW) / 2
-        const badgeY = y - badgeH - 4
-
-        ctx.fillStyle = atmosphere === "hearth" ? "rgba(32, 30, 29, 0.95)" : "rgba(250, 248, 245, 0.95)"
-        ctx.strokeStyle = atmosphere === "hearth" ? "rgba(231, 229, 228, 0.25)" : "rgba(28, 25, 23, 0.18)"
-        ctx.lineWidth = 1
-        ctx.beginPath()
-        ctx.roundRect(badgeX, badgeY, badgeW, badgeH, 4)
-        ctx.fill()
-        ctx.stroke()
-
+        ctx.font = `600 13px ${JAPANDI_FONT_FAMILY}`
         ctx.fillStyle = atmosphere === "hearth" ? "#e7e5e4" : "#1c1917"
         ctx.textAlign = "center"
         ctx.textBaseline = "middle"
-        ctx.fillText(label, badgeX + badgeW / 2, badgeY + badgeH / 2)
+        ctx.fillText(label, x + w / 2, y + h / 2)
         ctx.restore()
       }
     } else if (obj.type === "line") {
@@ -1892,7 +2162,7 @@ export const ZenCanvas: React.FC = () => {
         ctx.roundRect(pillX, pillY, pillW, pillH, 10)
         ctx.fill()
 
-        ctx.strokeStyle = atmosphere === "hearth" ? "#44403c" : "#e7e5e4"
+        ctx.strokeStyle = atmosphere === "hearth" ? "#3d3b38" : "#e7e5e4"
         ctx.lineWidth = 1
         ctx.stroke()
 
@@ -1974,16 +2244,11 @@ export const ZenCanvas: React.FC = () => {
         const rawLines = (note.content || "").split("\n")
         let curY = y + padding
 
-        rawLines.forEach((rawLine, lineIndex) => {
-          const isHeading = lineIndex === 0 && rawLine.trim().length > 0 && (rawLines.length > 1 || rawLine.startsWith("#"))
-          const cleanLine = rawLine.startsWith("#") ? rawLine.replace(/^#+\s*/, "") : rawLine
+        rawLines.forEach((rawLine) => {
+          ctx.font = `13.5px ${JAPANDI_FONT_FAMILY}`
+          ctx.fillStyle = atmosphere === "hearth" ? "#e7e5e4" : "#1c1917"
 
-          ctx.font = isHeading
-            ? `bold 14.5px ${JAPANDI_FONT_FAMILY}`
-            : `13.5px ${JAPANDI_FONT_FAMILY}`
-          ctx.fillStyle = isHeading ? "#1c1917" : "#292524"
-
-          const words = cleanLine.split(" ")
+          const words = rawLine.split(" ")
           let line = ""
           for (let n = 0; n < words.length; n++) {
             const testLine = line + words[n] + " "
@@ -1991,23 +2256,41 @@ export const ZenCanvas: React.FC = () => {
             if (metrics.width > maxWidth && n > 0) {
               ctx.fillText(line, x + padding, curY)
               line = words[n] + " "
-              curY += isHeading ? 22 : 20
+              curY += 20
             } else {
               line = testLine
             }
           }
           ctx.fillText(line, x + padding, curY)
-          curY += isHeading ? 24 : 20
+          curY += 20
         })
       }
     } else if (obj.type === "text") {
       const textObj = obj as TextObject
       if (editingId !== obj.id) {
-        ctx.fillStyle = textObj.fill || "#1c1917"
-        ctx.font = `${textObj.fontSize || 18}px ${textObj.fontFamily || JAPANDI_FONT_FAMILY}`
+        ctx.fillStyle = textObj.fill || (atmosphere === "hearth" ? "#e7e5e4" : "#1c1917")
+        const fontSize = textObj.fontSize || 18
+        ctx.font = `${fontSize}px ${textObj.fontFamily || JAPANDI_FONT_FAMILY}`
         ctx.textAlign = (textObj.textAlign as CanvasTextAlign) || "left"
         ctx.textBaseline = "top"
-        ctx.fillText(textObj.content || "", x, y)
+        const content = textObj.content || ""
+        if (!content && isSelected) {
+          ctx.fillStyle = atmosphere === "hearth" ? "#78716c" : "#a8a29e"
+          ctx.font = `italic ${fontSize}px ${textObj.fontFamily || JAPANDI_FONT_FAMILY}`
+          ctx.fillText("Type text...", x, y)
+        } else if (content) {
+          const lines = content.split("\n")
+          const lineHeight = fontSize * 1.35
+          lines.forEach((line, lineIdx) => {
+            let lineX = x
+            if (textObj.textAlign === "center") {
+              lineX = x + (obj.width || 200) / 2
+            } else if (textObj.textAlign === "right") {
+              lineX = x + (obj.width || 200)
+            }
+            ctx.fillText(line, lineX, y + lineIdx * lineHeight)
+          })
+        }
       }
     }
 
@@ -2077,8 +2360,10 @@ export const ZenCanvas: React.FC = () => {
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
       onDoubleClick={handleDoubleClick}
-      onWheel={handleWheel}
       onContextMenu={(e) => e.preventDefault()}
     >
       <canvas ref={canvasRef} className="absolute inset-0 w-full h-full block touch-none" />
@@ -2133,16 +2418,26 @@ export const ZenCanvas: React.FC = () => {
             width: `${editingPos.width}px`,
             height: `${editingPos.height}px`,
           }}
+          onMouseDown={(e) => e.stopPropagation()}
+          onMouseMove={(e) => e.stopPropagation()}
+          onMouseUp={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+          onDoubleClick={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
+          onTouchMove={(e) => e.stopPropagation()}
+          onTouchEnd={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
         >
           {objects[editingId]?.type === "line" ? (
             <input
               type="text"
               autoFocus
-              onFocus={(e) => e.target.select()}
+              onFocus={handleFocusInput}
               value={editingContent}
               onChange={(e) => setEditingContent(e.target.value)}
               onBlur={commitInlineEdit}
               onKeyDown={(e) => {
+                e.stopPropagation()
                 if (e.key === "Enter" || e.key === "Escape") {
                   commitInlineEdit()
                 }
@@ -2154,11 +2449,12 @@ export const ZenCanvas: React.FC = () => {
             <input
               type="text"
               autoFocus
-              onFocus={(e) => e.target.select()}
+              onFocus={handleFocusInput}
               value={editingContent}
               onChange={(e) => setEditingContent(e.target.value)}
               onBlur={commitInlineEdit}
               onKeyDown={(e) => {
+                e.stopPropagation()
                 if (e.key === "Enter" || e.key === "Escape") {
                   commitInlineEdit()
                 }
@@ -2170,22 +2466,55 @@ export const ZenCanvas: React.FC = () => {
             <input
               type="text"
               autoFocus
-              onFocus={(e) => e.target.select()}
+              onFocus={handleFocusInput}
               value={editingContent}
               onChange={(e) => setEditingContent(e.target.value)}
               onBlur={commitInlineEdit}
               onKeyDown={(e) => {
+                e.stopPropagation()
                 if (e.key === "Enter" || e.key === "Escape") {
                   commitInlineEdit()
                 }
               }}
-              className="w-full h-full px-2 py-1 text-xs font-bold bg-[#faf9f5] text-stone-900 rounded-md shadow-2xl border-2 border-[#c25e3e] outline-none text-center"
-              placeholder="Shape Label..."
+              className="w-full h-full px-3 py-1 text-sm font-semibold bg-white/95 text-stone-900 rounded-lg shadow-xl border-2 border-[#c25e3e] outline-none text-center"
+              placeholder="Type text in shape..."
+            />
+          ) : objects[editingId]?.type === "text" ? (
+            <textarea
+              autoFocus
+              onFocus={handleFocusInput}
+              value={editingContent}
+              onChange={(e) => {
+                const newContent = e.target.value
+                setEditingContent(newContent)
+                const lines = newContent.split("\n")
+                const zoom = zoomLevel || 1
+                const reqH = Math.max(lines.length * 28 + 14, 44)
+                const reqW = Math.max(...lines.map((l) => l.length * 11 + 24), 220)
+                setEditingPos((prev) => (prev ? { ...prev, width: Math.max(reqW * zoom, 200), height: Math.max(reqH * zoom, 44) } : null))
+                updateObject(editingId, { height: reqH, width: reqW, content: newContent } as any)
+              }}
+              onBlur={commitInlineEdit}
+              onKeyDown={(e) => {
+                e.stopPropagation()
+                if (e.key === "Escape") {
+                  commitInlineEdit()
+                } else if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault()
+                  commitInlineEdit()
+                }
+              }}
+              className="w-full h-full p-2 text-base font-normal bg-[#faf9f5]/95 text-stone-900 rounded-md shadow-xl border-2 border-dashed border-[#c25e3e] outline-none resize-none leading-relaxed"
+              placeholder="Type text... (Shift+Enter for newline)"
+              style={{
+                fontFamily: JAPANDI_FONT_FAMILY,
+                fontSize: `${Math.max(16 * (zoomLevel || 1), 12)}px`,
+              }}
             />
           ) : (
             <textarea
               autoFocus
-              onFocus={(e) => e.target.select()}
+              onFocus={handleFocusInput}
               value={editingContent}
               onChange={(e) => {
                 const newContent = e.target.value
@@ -2198,6 +2527,7 @@ export const ZenCanvas: React.FC = () => {
               }}
               onBlur={commitInlineEdit}
               onKeyDown={(e) => {
+                e.stopPropagation()
                 // Tab Thought-Chaining: Spawns the next note 24px to the right and transfers focus!
                 if (e.key === "Tab") {
                   e.preventDefault()
