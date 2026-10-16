@@ -138,7 +138,7 @@ export const BoardSwitcher: React.FC<BoardSwitcherProps> = ({ isOpen, onClose })
           : "bg-[#fbf9f5]/95 border-stone-200/90 text-stone-800 shadow-stone-900/15"
       }`}
       role="dialog"
-      aria-label="Atelier Board Switcher"
+      aria-label="Zen Plan Board Switcher"
     >
       {/* 1. Header with Kumiko Brand & Action Buttons */}
       <div className="flex items-center justify-between px-4 pt-3.5 pb-2.5 border-b border-inherit/40">
@@ -146,7 +146,7 @@ export const BoardSwitcher: React.FC<BoardSwitcherProps> = ({ isOpen, onClose })
           <KumikoLogo size={18} theme={atmosphere} />
           <div>
             <h3 className="text-xs font-semibold tracking-tight text-inherit flex items-center gap-1.5">
-              <span>Atelier Boards</span>
+              <span>Zen Plan Boards</span>
               <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
                 isHearth ? "bg-stone-800 text-stone-400" : "bg-stone-200/70 text-stone-600"
               }`}>
@@ -210,7 +210,7 @@ export const BoardSwitcher: React.FC<BoardSwitcherProps> = ({ isOpen, onClose })
               >
                 <span>⛩️</span>
                 <div>
-                  <div className="font-medium">Starter Atelier</div>
+                  <div className="font-medium">Starter Plan</div>
                   <div className="text-[10px] opacity-60">With notes, frames & shapes</div>
                 </div>
               </button>
@@ -307,7 +307,7 @@ export const BoardSwitcher: React.FC<BoardSwitcherProps> = ({ isOpen, onClose })
                       <>
                         <div className="flex items-center gap-1.5">
                           <span className="text-xs font-medium truncate">
-                            {board.title || "Untitled Atelier"}
+                            {board.title || "Untitled Plan"}
                           </span>
                           {isActive && (
                             <span className="text-[10px] font-mono opacity-50 uppercase tracking-wider">

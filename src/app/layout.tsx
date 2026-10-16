@@ -14,16 +14,17 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "ZenFlow — Paper & Stone Spatial Atelier",
-    template: "%s | ZenFlow",
+    default: "ZenFlow: Zen Plan — Spatial Whiteboard",
+    template: "%s | Zen Plan",
   },
   description:
     "A calm, Japandi-inspired infinite digital canvas engineered with tactile acoustics, kinetic glide navigation, and frictionless thought-chaining.",
-  applicationName: "ZenFlow Atelier",
+  applicationName: "Zen Plan",
   authors: [{ name: "Kaustobh Bhattacharya", url: "https://github.com/Kaustobh" }],
   creator: "Kaustobh Bhattacharya",
   keywords: [
     "ZenFlow",
+    "Zen Plan",
     "spatial canvas",
     "whiteboard",
     "Japandi design",
@@ -47,14 +48,14 @@ export const metadata: Metadata = {
     type: "website",
     locale: "en_US",
     url: "https://zen-flow-whiteboard.vercel.app",
-    siteName: "ZenFlow Atelier",
-    title: "ZenFlow — Paper & Stone Spatial Atelier",
+    siteName: "Zen Plan",
+    title: "ZenFlow: Zen Plan — Spatial Whiteboard",
     description:
       "A calm, Japandi-inspired infinite digital canvas engineered with tactile acoustics, kinetic glide navigation, and frictionless thought-chaining.",
   },
   twitter: {
     card: "summary_large_image",
-    title: "ZenFlow — Paper & Stone Spatial Atelier",
+    title: "ZenFlow: Zen Plan — Spatial Whiteboard",
     description:
       "A calm, Japandi-inspired infinite digital canvas engineered with tactile acoustics, kinetic glide navigation, and frictionless thought-chaining.",
     creator: "@Kaustobh",

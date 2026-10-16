@@ -30,7 +30,7 @@ export default function Home() {
   const [showSettingsMenu, setShowSettingsMenu] = useState(false)
   const [showLoadingScreen, setShowLoadingScreen] = useState(true)
   const [isEditingTitle, setIsEditingTitle] = useState(false)
-  const [titleDraft, setTitleDraft] = useState(boardTitle || "Zen Atelier")
+  const [titleDraft, setTitleDraft] = useState(boardTitle || "Zen Plan")
   const [acousticsActive, setAcousticsActive] = useState(true)
 
   const exportMenuRef = useRef<HTMLDivElement>(null)
@@ -38,7 +38,7 @@ export default function Home() {
 
   // Sync draft title when active board changes
   useEffect(() => {
-    setTitleDraft(boardTitle || "Zen Atelier")
+    setTitleDraft(boardTitle || "Zen Plan")
   }, [boardTitle])
 
   // Quick keyboard shortcuts for Zen Mode, Board Creation & Switcher
@@ -121,7 +121,7 @@ export default function Home() {
 
   const handleCommitTitle = () => {
     setIsEditingTitle(false)
-    const trimmed = titleDraft.trim() || "Zen Atelier"
+    const trimmed = titleDraft.trim() || "Zen Plan"
     setBoardTitle(trimmed)
   }
 
@@ -213,7 +213,7 @@ export default function Home() {
                     className="text-xs font-semibold tracking-tight cursor-pointer hover:opacity-80 transition-opacity truncate max-w-[100px] sm:max-w-[180px] md:max-w-[240px] block"
                     title="Click to rename board"
                   >
-                    {boardTitle || "Zen Atelier"}
+                    {boardTitle || "Zen Plan"}
                   </span>
                 )}
 

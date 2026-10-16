@@ -5,7 +5,7 @@ import { CanvasObject, ToolType, Point, BoardRecord } from '../../types'
 
 const createDefaultBoardRecord = (
   id = "default-board",
-  title = "Zen Atelier",
+  title = "Zen Plan",
   objects = getStarterObjects()
 ): BoardRecord => ({
   id,
@@ -48,7 +48,7 @@ const getStarterObjects = (): Record<string, CanvasObject> => {
       height: 190,
       color: "#fefae0", // Warm Parchment
       fill: "#fefae0",
-      content: "Zen Atelier Canvas 🌿\n\n• Double-click to spawn a note\n• Tab in note for thought-chaining\n• Shift+Enter to branch below\n• Keys 1-6 switch paper tones\n• Drag frame to move group",
+      content: "Zen Plan Canvas 🌿\n\n• Double-click to spawn a note\n• Tab in note for thought-chaining\n• Shift+Enter to branch below\n• Keys 1-6 switch paper tones\n• Drag frame to move group",
       stroke: "rgba(0,0,0,0.08)",
       strokeWidth: 1,
       opacity: 1,
@@ -211,7 +211,7 @@ export const useCanvasStore = create<CanvasState>()(
         past: [],
         future: [],
         atmosphere: "morning",
-        boardTitle: "Zen Atelier",
+        boardTitle: "Zen Plan",
         activeBoardId: "default-board",
         boards: {
           "default-board": createDefaultBoardRecord(),
@@ -274,7 +274,7 @@ export const useCanvasStore = create<CanvasState>()(
 
           // 2. Generate new board
           const newId = `board-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`
-          const newTitle = title || `Untitled Atelier ${Object.keys(boards).length + 1}`
+          const newTitle = title || `Untitled Plan ${Object.keys(boards).length + 1}`
           const newObjects = template === "starter" ? getStarterObjects() : {}
 
           const newBoard: BoardRecord = {
@@ -939,7 +939,7 @@ export const useCanvasStore = create<CanvasState>()(
               const defaultId = state.activeBoardId || "default-board"
               const defaultRecord: BoardRecord = {
                 id: defaultId,
-                title: state.boardTitle || "Zen Atelier",
+                title: state.boardTitle || "Zen Plan",
                 objects: state.objects || getStarterObjects(),
                 past: state.past || [],
                 future: state.future || [],

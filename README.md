@@ -1,4 +1,4 @@
-# 🌿 ZenFlow — Paper & Stone Spatial Atelier
+# 🌿 ZenFlow: Zen Plan — Spatial Whiteboard
 
 > A distraction-free, Japandi-inspired spatial whiteboard engineered with tactile acoustics, kinetic glide navigation, and frictionless thought-chaining.
 
@@ -8,7 +8,7 @@
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind-38B2AC?style=flat&logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-> **Live Atelier Demo**: 🌐 **[https://zen-flow-whiteboard.vercel.app/](https://zen-flow-whiteboard.vercel.app/)**
+> **Live Zen Plan Demo**: 🌐 **[https://zen-flow-whiteboard.vercel.app/](https://zen-flow-whiteboard.vercel.app/)**
 
 ---
 
