@@ -935,11 +935,22 @@ export const useCanvasStore = create<CanvasState>()(
         },
         onRehydrateStorage: () => (state) => {
           if (state) {
+            // Auto-migrate legacy cached titles in localStorage from "Zen Atelier" to "Zen Plan"
+            if (state.boardTitle === "Zen Atelier") {
+              state.boardTitle = "Zen Plan"
+            }
+            if (state.boards) {
+              Object.values(state.boards).forEach((b) => {
+                if (b.title === "Zen Atelier") {
+                  b.title = "Zen Plan"
+                }
+              })
+            }
             if (!state.boards || Object.keys(state.boards).length === 0) {
               const defaultId = state.activeBoardId || "default-board"
               const defaultRecord: BoardRecord = {
                 id: defaultId,
-                title: state.boardTitle || "Zen Plan",
+                title: "Zen Plan",
                 objects: state.objects || getStarterObjects(),
                 past: state.past || [],
                 future: state.future || [],

@@ -41,6 +41,14 @@ export default function Home() {
     setTitleDraft(boardTitle || "Zen Plan")
   }, [boardTitle])
 
+  // Automatically migrate legacy cached "Zen Atelier" board title to "Zen Plan"
+  useEffect(() => {
+    if (boardTitle === "Zen Atelier") {
+      setBoardTitle("Zen Plan")
+      setTitleDraft("Zen Plan")
+    }
+  }, [boardTitle, setBoardTitle])
+
   // Quick keyboard shortcuts for Zen Mode, Board Creation & Switcher
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
