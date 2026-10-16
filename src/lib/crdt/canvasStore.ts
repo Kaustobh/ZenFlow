@@ -157,6 +157,12 @@ interface CanvasState {
   selectAll: () => void
   clearSelection: () => void
   duplicateSelectedObjects: () => void
+  bringToFront: (ids: string[]) => void
+  sendToBack: (ids: string[]) => void
+  bringForward: (ids: string[]) => void
+  sendBackward: (ids: string[]) => void
+  groupSelectedObjects: () => void
+  ungroupSelectedObjects: () => void
   clearCanvas: () => void
   loadStarterTemplate: () => void
 
@@ -760,6 +766,161 @@ export const useCanvasStore = create<CanvasState>()(
             future: [],
             objects: newObjects,
             selectedObjectIds: newSelectedIds,
+          }))
+        },
+
+        bringToFront: (ids) => {
+          if (!ids || ids.length === 0) return
+          const idSet = new Set(ids)
+          const { objects } = get()
+          const keys = Object.keys(objects)
+          const remainingKeys = keys.filter((k) => !idSet.has(k))
+          const targetKeys = keys.filter((k) => idSet.has(k))
+          if (targetKeys.length === 0) return
+
+          const newObjects: Record<string, CanvasObject> = {}
+          remainingKeys.forEach((k) => {
+            newObjects[k] = objects[k]
+          })
+          targetKeys.forEach((k) => {
+            newObjects[k] = objects[k]
+          })
+
+          set((state) => ({
+            past: [...state.past.slice(-25), state.objects],
+            future: [],
+            objects: newObjects,
+          }))
+        },
+
+        sendToBack: (ids) => {
+          if (!ids || ids.length === 0) return
+          const idSet = new Set(ids)
+          const { objects } = get()
+          const keys = Object.keys(objects)
+          const targetKeys = keys.filter((k) => idSet.has(k))
+          if (targetKeys.length === 0) return
+
+          // Frames remain at the absolute bottom
+          const nonTargetKeys = keys.filter((k) => !idSet.has(k))
+          const frameKeys = nonTargetKeys.filter((k) => objects[k]?.type === "frame")
+          const otherKeys = nonTargetKeys.filter((k) => objects[k]?.type !== "frame")
+
+          const newObjects: Record<string, CanvasObject> = {}
+          frameKeys.forEach((k) => {
+            newObjects[k] = objects[k]
+          })
+          targetKeys.forEach((k) => {
+            newObjects[k] = objects[k]
+          })
+          otherKeys.forEach((k) => {
+            newObjects[k] = objects[k]
+          })
+
+          set((state) => ({
+            past: [...state.past.slice(-25), state.objects],
+            future: [],
+            objects: newObjects,
+          }))
+        },
+
+        bringForward: (ids) => {
+          if (!ids || ids.length === 0) return
+          const idSet = new Set(ids)
+          const { objects } = get()
+          const keys = Object.keys(objects)
+          const newKeyOrder = [...keys]
+          for (let i = newKeyOrder.length - 2; i >= 0; i--) {
+            if (idSet.has(newKeyOrder[i]) && !idSet.has(newKeyOrder[i + 1])) {
+              const temp = newKeyOrder[i]
+              newKeyOrder[i] = newKeyOrder[i + 1]
+              newKeyOrder[i + 1] = temp
+            }
+          }
+          const newObjects: Record<string, CanvasObject> = {}
+          newKeyOrder.forEach((k) => {
+            newObjects[k] = objects[k]
+          })
+          set((state) => ({
+            past: [...state.past.slice(-25), state.objects],
+            future: [],
+            objects: newObjects,
+          }))
+        },
+
+        sendBackward: (ids) => {
+          if (!ids || ids.length === 0) return
+          const idSet = new Set(ids)
+          const { objects } = get()
+          const keys = Object.keys(objects)
+          const newKeyOrder = [...keys]
+          for (let i = 1; i < newKeyOrder.length; i++) {
+            if (idSet.has(newKeyOrder[i]) && !idSet.has(newKeyOrder[i - 1])) {
+              if (objects[newKeyOrder[i]]?.type !== "frame" && objects[newKeyOrder[i - 1]]?.type === "frame") {
+                continue
+              }
+              const temp = newKeyOrder[i]
+              newKeyOrder[i] = newKeyOrder[i - 1]
+              newKeyOrder[i - 1] = temp
+            }
+          }
+          const newObjects: Record<string, CanvasObject> = {}
+          newKeyOrder.forEach((k) => {
+            newObjects[k] = objects[k]
+          })
+          set((state) => ({
+            past: [...state.past.slice(-25), state.objects],
+            future: [],
+            objects: newObjects,
+          }))
+        },
+
+        groupSelectedObjects: () => {
+          const { selectedObjectIds, objects } = get()
+          if (selectedObjectIds.length <= 1) return
+          const groupId = crypto.randomUUID()
+          const now = new Date().toISOString()
+          const newObjects = { ...objects }
+          selectedObjectIds.forEach((id) => {
+            if (newObjects[id]) {
+              newObjects[id] = {
+                ...newObjects[id],
+                groupId,
+                updatedAt: now,
+              }
+            }
+          })
+          set((state) => ({
+            past: [...state.past.slice(-25), state.objects],
+            future: [],
+            objects: newObjects,
+          }))
+        },
+
+        ungroupSelectedObjects: () => {
+          const { selectedObjectIds, objects } = get()
+          if (selectedObjectIds.length === 0) return
+          const groupIdsToClear = new Set<string>()
+          selectedObjectIds.forEach((id) => {
+            if (objects[id]?.groupId) {
+              groupIdsToClear.add(objects[id].groupId!)
+            }
+          })
+          if (groupIdsToClear.size === 0) return
+          const now = new Date().toISOString()
+          const newObjects = { ...objects }
+          Object.keys(newObjects).forEach((id) => {
+            if (newObjects[id].groupId && groupIdsToClear.has(newObjects[id].groupId!)) {
+              const copy = { ...newObjects[id] }
+              delete copy.groupId
+              copy.updatedAt = now
+              newObjects[id] = copy
+            }
+          })
+          set((state) => ({
+            past: [...state.past.slice(-25), state.objects],
+            future: [],
+            objects: newObjects,
           }))
         },
 

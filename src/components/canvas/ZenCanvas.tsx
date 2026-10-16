@@ -92,6 +92,12 @@ export const ZenCanvas: React.FC = () => {
     deleteObject,
     deleteSelectedObjects,
     duplicateSelectedObjects,
+    bringToFront,
+    sendToBack,
+    bringForward,
+    sendBackward,
+    groupSelectedObjects,
+    ungroupSelectedObjects,
     spawnAdjacentNote,
     saveSnapshot,
     undo,
@@ -111,6 +117,7 @@ export const ZenCanvas: React.FC = () => {
   const [currentCanvasPoint, setCurrentCanvasPoint] = useState<Point>({ x: 0, y: 0 })
   const currentCanvasPointRef = useRef<Point>({ x: 0, y: 0 })
   const lastSnapSoundTimeRef = useRef<number>(0)
+  const hasInitialCharRef = useRef<boolean>(false)
   const touchStartDistRef = useRef<number | null>(null)
   const touchStartZoomRef = useRef<number>(1)
   const lastTouchCenterRef = useRef<Point | null>(null)
@@ -459,17 +466,23 @@ export const ZenCanvas: React.FC = () => {
 
   // Start inline editing for any canvas object (frame, rectangle, circle, line, note, text)
   const startEditingObject = useCallback(
-    (id: string, overrideObj?: CanvasObject) => {
+    (id: string, overrideObj?: CanvasObject, initialChar?: string) => {
       const obj = overrideObj || objects[id]
       if (!obj) return
 
       const zoom = Number.isFinite(zoomLevel) && zoomLevel > 0 ? zoomLevel : 1
 
+      if (initialChar !== undefined) {
+        hasInitialCharRef.current = true
+      }
+
       if (obj.type === "frame") {
         const frame = obj as FrameObject
         const screenPos = canvasToScreen(frame.x + 12, frame.y + 10)
+        const base = frame.title || ""
+        const content = initialChar !== undefined ? (base ? base + initialChar : initialChar) : base
         setEditingId(id)
-        setEditingContent(frame.title || "Frame Section")
+        setEditingContent(content)
         setEditingPos({
           x: screenPos.x,
           y: screenPos.y,
@@ -484,8 +497,10 @@ export const ZenCanvas: React.FC = () => {
         const objW = (obj.width || 100) * zoom
         const objH = (obj.height || 60) * zoom
         const editW = Math.max(Math.min(objW - 16, 260), 120)
+        const base = (obj as any).label || (obj as any).title || ""
+        const content = initialChar !== undefined ? (base ? base + initialChar : initialChar) : base
         setEditingId(id)
-        setEditingContent((obj as any).label || (obj as any).title || "")
+        setEditingContent(content)
         setEditingPos({
           x: screenPos.x + Math.max(0, (objW - editW) / 2),
           y: screenPos.y + (objH - 32) / 2,
@@ -503,8 +518,10 @@ export const ZenCanvas: React.FC = () => {
         if (line.toId && objects[line.toId]) p2 = getAnchorPoint(objects[line.toId], line.toAnchor)
         const { midpoint } = computeBezierParams(p1, p2, line.fromAnchor, line.toAnchor)
         const screenPos = canvasToScreen(midpoint.x, midpoint.y)
+        const base = line.label || ""
+        const content = initialChar !== undefined ? (base ? base + initialChar : initialChar) : base
         setEditingId(id)
-        setEditingContent(line.label || "")
+        setEditingContent(content)
         setEditingPos({
           x: screenPos.x - 75,
           y: screenPos.y - 16,
@@ -516,8 +533,10 @@ export const ZenCanvas: React.FC = () => {
 
       if (obj.type === "text") {
         const screenPos = canvasToScreen(obj.x, obj.y)
+        const base = (obj as any).content || ""
+        const content = initialChar !== undefined ? (base ? base + initialChar : initialChar) : base
         setEditingId(id)
-        setEditingContent((obj as any).content || "")
+        setEditingContent(content)
         setEditingPos({
           x: screenPos.x,
           y: screenPos.y,
@@ -529,8 +548,11 @@ export const ZenCanvas: React.FC = () => {
 
       if (obj.type === "sticky-note") {
         const screenPos = canvasToScreen(obj.x, obj.y)
+        const base = (obj as any).content || ""
+        const cleanBase = base === "Double-click to write..." ? "" : base
+        const content = initialChar !== undefined ? (cleanBase ? cleanBase + initialChar : initialChar) : cleanBase
         setEditingId(id)
-        setEditingContent((obj as any).content || "")
+        setEditingContent(content)
         setEditingPos({
           x: screenPos.x,
           y: screenPos.y,
@@ -578,6 +600,34 @@ export const ZenCanvas: React.FC = () => {
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "d") {
         e.preventDefault()
         duplicateSelectedObjects()
+      } else if ((e.ctrlKey || e.metaKey) && e.key === "]") {
+        e.preventDefault()
+        if (selectedObjectIds.length > 0) {
+          if (e.altKey) {
+            bringForward(selectedObjectIds)
+          } else {
+            bringToFront(selectedObjectIds)
+          }
+          acoustics.playPaperDrop()
+        }
+      } else if ((e.ctrlKey || e.metaKey) && e.key === "[") {
+        e.preventDefault()
+        if (selectedObjectIds.length > 0) {
+          if (e.altKey) {
+            sendBackward(selectedObjectIds)
+          } else {
+            sendToBack(selectedObjectIds)
+          }
+          acoustics.playPaperDrop()
+        }
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "g") {
+        e.preventDefault()
+        if (e.shiftKey) {
+          ungroupSelectedObjects()
+        } else {
+          groupSelectedObjects()
+        }
+        acoustics.playPaperDrop()
       } else if (e.shiftKey && (e.key === "!" || e.key === "1")) {
         e.preventDefault()
         if (containerRef.current) {
@@ -621,18 +671,37 @@ export const ZenCanvas: React.FC = () => {
           selectObject(objectIds[nextIndex])
           acoustics.playPaperDrop()
         }
-      } else if (selectedObjectIds.length === 1 && ["1", "2", "3", "4", "5", "6"].includes(e.key)) {
-        // Instant palette hotkey 1-6
+      } else if (
+        selectedObjectIds.length === 1 &&
+        currentTool === "select" &&
+        !editingId &&
+        e.key.length === 1 &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.altKey &&
+        e.code !== "Space"
+      ) {
+        // Type-to-write on selected shapes, notes, and text (Miro standard)
+        const id = selectedObjectIds[0]
+        const obj = objects[id]
+        if (obj && ["rectangle", "circle", "sticky-note", "text", "line", "frame"].includes(obj.type)) {
+          e.preventDefault()
+          startEditingObject(id, undefined, e.key)
+          return
+        }
+      } else if (selectedObjectIds.length > 1 && ["1", "2", "3", "4", "5", "6"].includes(e.key)) {
+        // Multi-select instant palette hotkey 1-6
         const idx = parseInt(e.key) - 1
         const swatch = ATELIER_PALETTE[idx]
         if (swatch) {
-          const id = selectedObjectIds[0]
-          const obj = objects[id]
-          if (obj?.type === "sticky-note") {
-            updateObject(id, { color: swatch, fill: swatch } as any)
-          } else if (obj) {
-            updateObject(id, { fill: swatch })
-          }
+          selectedObjectIds.forEach((id) => {
+            const obj = objects[id]
+            if (obj?.type === "sticky-note") {
+              updateObject(id, { color: swatch, fill: swatch } as any)
+            } else if (obj) {
+              updateObject(id, { fill: swatch })
+            }
+          })
         }
       } else {
         const toolMap: Record<string, any> = {
@@ -659,7 +728,7 @@ export const ZenCanvas: React.FC = () => {
       }
     }
 
-    // Global Paste Listener for Text & Sticky Notes
+    // Global Paste Listener for Text & Sticky Notes (Context-Aware for Selected Objects)
     const handlePaste = (e: ClipboardEvent) => {
       if (
         editingId ||
@@ -676,6 +745,50 @@ export const ZenCanvas: React.FC = () => {
 
       e.preventDefault()
 
+      const trimmed = text.trim()
+
+      // 1. Context-Aware Pasting: If exactly one object is selected, paste into that object directly
+      if (selectedObjectIds.length === 1) {
+        const selId = selectedObjectIds[0]
+        const selObj = objects[selId]
+        if (selObj) {
+          saveSnapshot()
+          if (selObj.type === "rectangle" || selObj.type === "circle") {
+            const updated = { label: trimmed, title: trimmed }
+            updateObject(selId, updated as any, false)
+            acoustics.playPaperDrop()
+            startEditingObject(selId, { ...selObj, ...updated })
+            return
+          }
+          if (selObj.type === "line") {
+            const updated = { label: trimmed }
+            updateObject(selId, updated as any, false)
+            acoustics.playPaperDrop()
+            startEditingObject(selId, { ...selObj, ...updated })
+            return
+          }
+          if (selObj.type === "sticky-note") {
+            const reqH = calculateNoteHeight(trimmed, selObj.width || 220, 140)
+            const updated = { content: trimmed, height: reqH }
+            updateObject(selId, updated as any, false)
+            acoustics.playPaperDrop()
+            startEditingObject(selId, { ...selObj, ...updated })
+            return
+          }
+          if (selObj.type === "text") {
+            const lines = trimmed.split("\n")
+            const estH = Math.max(lines.length * 28 + 14, 44)
+            const estW = Math.max(selObj.width || 240, Math.min(Math.max(trimmed.length * 11, 240), 600))
+            const updated = { content: trimmed, width: estW, height: estH }
+            updateObject(selId, updated as any, false)
+            acoustics.playPaperDrop()
+            startEditingObject(selId, { ...selObj, ...updated })
+            return
+          }
+        }
+      }
+
+      // 2. Fallback: Paste as new sticky note or text object at mouse position
       let targetPt = currentCanvasPointRef.current
       if (!targetPt || (targetPt.x === 0 && targetPt.y === 0)) {
         const container = containerRef.current
@@ -686,7 +799,6 @@ export const ZenCanvas: React.FC = () => {
 
       const id = crypto.randomUUID()
       const now = new Date().toISOString()
-      const trimmed = text.trim()
       const isMultiParagraph = trimmed.includes("\n\n") || (trimmed.includes("\n") && trimmed.length > 80)
 
       if (isMultiParagraph) {
@@ -710,6 +822,7 @@ export const ZenCanvas: React.FC = () => {
           createdBy: "user",
         }
         addObject(noteObj)
+        bringToFront([id])
         selectObject(id)
         acoustics.playPaperDrop()
       } else {
@@ -733,6 +846,7 @@ export const ZenCanvas: React.FC = () => {
           createdBy: "user",
         }
         addObject(textObj)
+        bringToFront([id])
         selectObject(id)
         acoustics.playPaperDrop()
       }
@@ -753,7 +867,14 @@ export const ZenCanvas: React.FC = () => {
     selectAll,
     clearSelection,
     setCurrentTool,
+    currentTool,
     duplicateSelectedObjects,
+    bringToFront,
+    sendToBack,
+    bringForward,
+    sendBackward,
+    groupSelectedObjects,
+    ungroupSelectedObjects,
     selectedObjectIds,
     objects,
     zoomToFit,
@@ -761,6 +882,8 @@ export const ZenCanvas: React.FC = () => {
     startEditingObject,
     editingId,
     addObject,
+    updateObject,
+    saveSnapshot,
     selectObject,
     screenToCanvas,
     atmosphere,
@@ -1018,10 +1141,27 @@ export const ZenCanvas: React.FC = () => {
 
       const clickedId = getObjectAtPoint(canvasPt)
       if (clickedId) {
+        const clickedObj = objects[clickedId]
+        if (clickedObj?.type === "text") {
+          bringToFront([clickedId])
+        }
+
+        const groupMembers = clickedObj?.groupId
+          ? Object.values(objects).filter((o) => o.groupId === clickedObj.groupId).map((o) => o.id)
+          : [clickedId]
+
         if (e.shiftKey) {
-          selectObject(clickedId, true)
-        } else if (!selectedObjectIds.includes(clickedId)) {
-          selectObject(clickedId, false)
+          const anySelected = groupMembers.some((id) => selectedObjectIds.includes(id))
+          if (anySelected) {
+            selectMultipleObjects(selectedObjectIds.filter((id) => !groupMembers.includes(id)))
+          } else {
+            selectMultipleObjects([...selectedObjectIds, ...groupMembers])
+          }
+        } else {
+          const allSelected = groupMembers.every((id) => selectedObjectIds.includes(id))
+          if (!allSelected) {
+            selectMultipleObjects(groupMembers)
+          }
         }
         saveSnapshot()
         setInteractionMode("moving")
@@ -1051,6 +1191,7 @@ export const ZenCanvas: React.FC = () => {
         return
       }
       setInteractionMode("drawing")
+      setDragStartCanvas(canvasPt)
     } else if (
       currentTool === "rectangle" ||
       currentTool === "circle" ||
@@ -1123,8 +1264,26 @@ export const ZenCanvas: React.FC = () => {
       }
       setSnapGuides({ x: snappedX, y: snappedY })
 
-      // Smart Frame grouping: If a frame is moving, all contained thoughts move seamlessly with it
+      // Smart Grouping & Frame Parenting: all grouped elements & frame children move together
       const movingIds = new Set<string>(selectedObjectIds)
+
+      // 1. Group membership propagation
+      const activeGroupIds = new Set<string>()
+      selectedObjectIds.forEach((id) => {
+        const obj = objects[id]
+        if (obj?.groupId) {
+          activeGroupIds.add(obj.groupId)
+        }
+      })
+      if (activeGroupIds.size > 0) {
+        Object.values(objects).forEach((o) => {
+          if (o.groupId && activeGroupIds.has(o.groupId)) {
+            movingIds.add(o.id)
+          }
+        })
+      }
+
+      // 2. Smart Frame grouping: If a frame is moving, all contained thoughts move seamlessly with it
       selectedObjectIds.forEach((id) => {
         const obj = objects[id]
         if (obj?.type === "frame") {
@@ -1481,13 +1640,19 @@ export const ZenCanvas: React.FC = () => {
         acoustics.playPaperDrop()
         setCurrentTool("select")
       } else if (currentTool === "text") {
+        const rawDragW = Math.abs(p2.x - p1.x)
+        const rawDragH = Math.abs(p2.y - p1.y)
+        const isDragged = rawDragW > 25 || rawDragH > 25
+        const textW = isDragged ? Math.max(rawDragW, 100) : 240
+        const textH = isDragged ? Math.max(rawDragH, 44) : 44
+
         const textObj: TextObject = {
           id,
           type: "text",
-          x: p1.x,
-          y: p1.y,
-          width: 240,
-          height: 44,
+          x,
+          y,
+          width: textW,
+          height: textH,
           content: "",
           fontSize: 18,
           fontFamily: JAPANDI_FONT_FAMILY,
@@ -1499,6 +1664,7 @@ export const ZenCanvas: React.FC = () => {
           createdBy: "user",
         }
         addObject(textObj)
+        bringToFront([textObj.id])
         selectObject(textObj.id)
         setCurrentTool("select")
         startEditingObject(textObj.id, textObj)
@@ -1682,9 +1848,15 @@ export const ZenCanvas: React.FC = () => {
     }
   }
 
-  // Mobile virtual keyboard viewport adaptation
+  // Mobile virtual keyboard viewport adaptation & cursor positioning
   const handleFocusInput = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    e.target.select()
+    if (hasInitialCharRef.current) {
+      hasInitialCharRef.current = false
+      const len = e.target.value.length
+      e.target.setSelectionRange(len, len)
+    } else {
+      e.target.select()
+    }
     if (typeof window !== "undefined" && window.innerWidth <= 768) {
       setTimeout(() => {
         e.target.scrollIntoView({ behavior: "smooth", block: "center" })
@@ -1844,6 +2016,15 @@ export const ZenCanvas: React.FC = () => {
           ctx.beginPath()
           ctx.ellipse(x + w / 2, y + h / 2, Math.max(w / 2, 1), Math.max(h / 2, 1), 0, 0, Math.PI * 2)
           ctx.stroke()
+        } else if (currentTool === "text") {
+          const x = Math.min(dragStartCanvas.x, currentCanvasPoint.x)
+          const y = Math.min(dragStartCanvas.y, currentCanvasPoint.y)
+          const w = Math.abs(currentCanvasPoint.x - dragStartCanvas.x)
+          const h = Math.abs(currentCanvasPoint.y - dragStartCanvas.y)
+          ctx.strokeStyle = "#c25e3e"
+          ctx.lineWidth = 1.5
+          ctx.setLineDash([3, 3])
+          ctx.strokeRect(x, y, w, h)
         } else if (currentTool === "line") {
           ctx.strokeStyle = "#c25e3e"
           ctx.lineWidth = 2.5

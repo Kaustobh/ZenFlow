@@ -66,6 +66,7 @@ export interface BaseObject {
   stroke?: string
   strokeWidth?: number
   opacity?: number
+  groupId?: string
   createdAt: string
   updatedAt: string
   createdBy: UserId
