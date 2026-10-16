@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" fill="none">
+  <defs>
+    <style>
+      :root {
+        --top-start: #ffffff;
+        --top-end: #f4eee2;
+        --left-start: #eae0cf;
+        --left-end: #d8cbb5;
+        --right-start: #dfd1b8;
+        --right-end: #c7b699;
+        --stroke-outer: #292524;
+        --stroke-ridge: #57534e;
+        --cinnabar-1: #ff7854;
+        --cinnabar-2: #dc3e1c;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --top-start: #44403c;
+          --top-end: #292524;
+          --left-start: #262322;
+          --left-end: #1c1917;
+          --right-start: #1c1917;
+          --right-end: #0c0a09;
+          --stroke-outer: #a8a29e;
+          --stroke-ridge: #78716c;
+          --cinnabar-1: #ff8a65;
+          --cinnabar-2: #ea580c;
+        }
+      }
+    </style>
+    <linearGradient id="favTop" x1="32" y1="6" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="var(--top-start)" />
+      <stop offset="100%" stop-color="var(--top-end)" />
+    </linearGradient>
+    <linearGradient id="favLeft" x1="10" y1="19" x2="32" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="var(--left-start)" />
+      <stop offset="100%" stop-color="var(--left-end)" />
+    </linearGradient>
+    <linearGradient id="favRight" x1="54" y1="19" x2="32" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="var(--right-start)" />
+      <stop offset="100%" stop-color="var(--right-end)" />
+    </linearGradient>
+    <radialGradient id="favCinnabar" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="var(--cinnabar-1)" />
+      <stop offset="100%" stop-color="var(--cinnabar-2)" />
+    </radialGradient>
+  </defs>
+
+  <!-- 1. Isometric Top Plinth -->
+  <polygon points="32,6 55,19 32,32 9,19" fill="url(#favTop)" stroke="var(--stroke-ridge)" stroke-width="1.5" stroke-linejoin="round" />
+
+  <!-- 2. Isometric Left Flank -->
+  <polygon points="9,19 32,32 32,58 9,45" fill="url(#favLeft)" stroke="var(--stroke-ridge)" stroke-width="1.5" stroke-linejoin="round" />
+
+  <!-- 3. Isometric Right Flank -->
+  <polygon points="32,32 55,19 55,45 32,58" fill="url(#favRight)" stroke="var(--stroke-ridge)" stroke-width="1.5" stroke-linejoin="round" />
+
+  <!-- 4. Kumiko Internal Joinery Lines (Optical tuning for small tab icons) -->
+  <line x1="20.5" y1="12.5" x2="43.5" y2="25.5" stroke="var(--stroke-ridge)" stroke-width="1" stroke-linecap="round" stroke-opacity="0.6" />
+  <line x1="43.5" y1="12.5" x2="20.5" y2="25.5" stroke="var(--stroke-ridge)" stroke-width="1" stroke-linecap="round" stroke-opacity="0.6" />
+  <line x1="9" y1="32" x2="32" y2="45" stroke="var(--stroke-ridge)" stroke-width="1" stroke-linecap="round" stroke-opacity="0.6" />
+  <line x1="20.5" y1="25.5" x2="20.5" y2="51.5" stroke="var(--stroke-ridge)" stroke-width="1" stroke-linecap="round" stroke-opacity="0.6" />
+  <line x1="55" y1="32" x2="32" y2="45" stroke="var(--stroke-ridge)" stroke-width="1" stroke-linecap="round" stroke-opacity="0.6" />
+  <line x1="43.5" y1="25.5" x2="43.5" y2="51.5" stroke="var(--stroke-ridge)" stroke-width="1" stroke-linecap="round" stroke-opacity="0.6" />
+
+  <!-- 5. Exterior Hexagonal Chiseled Boundary -->
+  <polygon points="32,6 55,19 55,45 32,58 9,45 9,19" fill="none" stroke="var(--stroke-outer)" stroke-width="2.5" stroke-linejoin="round" />
+
+  <!-- 6. Kyoto Cinnabar Glowing Nucleus Diamond (High visual salience) -->
+  <polygon points="32,26.5 37.5,32 32,37.5 26.5,32" fill="url(#favCinnabar)" stroke="#ffedd5" stroke-width="0.8" />
+</svg>

@@ -1,0 +1,17 @@
+{
+  "name": "ZenFlow — Paper & Stone Spatial Atelier",
+  "short_name": "ZenFlow",
+  "description": "A calm, Japandi-inspired infinite digital canvas for frictionless visual thinking and spatial mapping.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8f5ee",
+  "theme_color": "#1c1917",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

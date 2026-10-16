@@ -13,8 +13,52 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ZenFlow — Infinite Spatial Canvas",
-  description: "A calm, minimalist infinite digital canvas for visual thinking and collaboration",
+  title: {
+    default: "ZenFlow — Paper & Stone Spatial Atelier",
+    template: "%s | ZenFlow",
+  },
+  description:
+    "A calm, Japandi-inspired infinite digital canvas engineered with tactile acoustics, kinetic glide navigation, and frictionless thought-chaining.",
+  applicationName: "ZenFlow Atelier",
+  authors: [{ name: "Kaustobh Bhattacharya", url: "https://github.com/Kaustobh" }],
+  creator: "Kaustobh Bhattacharya",
+  keywords: [
+    "ZenFlow",
+    "spatial canvas",
+    "whiteboard",
+    "Japandi design",
+    "visual thinking",
+    "infinite canvas",
+    "mind mapping",
+    "tactile UI",
+    "minimalist workspace",
+    "CRDT",
+  ],
+  icons: {
+    icon: [
+      { url: "/icon.svg", type: "image/svg+xml" },
+      { url: "/favicon.svg", type: "image/svg+xml" },
+    ],
+    shortcut: "/favicon.svg",
+    apple: "/icon.svg",
+  },
+  manifest: "/site.webmanifest",
+  openGraph: {
+    type: "website",
+    locale: "en_US",
+    url: "https://zenflow.vercel.app",
+    siteName: "ZenFlow Atelier",
+    title: "ZenFlow — Paper & Stone Spatial Atelier",
+    description:
+      "A calm, Japandi-inspired infinite digital canvas engineered with tactile acoustics, kinetic glide navigation, and frictionless thought-chaining.",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "ZenFlow — Paper & Stone Spatial Atelier",
+    description:
+      "A calm, Japandi-inspired infinite digital canvas engineered with tactile acoustics, kinetic glide navigation, and frictionless thought-chaining.",
+    creator: "@Kaustobh",
+  },
 };
 
 export default function RootLayout({
