@@ -9,6 +9,7 @@ import { acoustics } from "../lib/audio/atelierAcoustics"
 import { exportToSVG, exportToMarkdown } from "../lib/export/exportFormats"
 import { KumikoLogo } from "../components/ui/KumikoLogo"
 import { AtelierLoadingScreen } from "../components/ui/AtelierLoadingScreen"
+import { BoardSwitcher } from "../components/layout/BoardSwitcher"
 
 export default function Home() {
   const {
@@ -19,9 +20,11 @@ export default function Home() {
     setAtmosphere,
     boardTitle,
     setBoardTitle,
+    createBoard,
   } = useCanvasStore()
 
   const [showStructureMap, setShowStructureMap] = useState(false)
+  const [showBoardSwitcher, setShowBoardSwitcher] = useState(false)
   const [isZenMode, setIsZenMode] = useState(false)
   const [showExportMenu, setShowExportMenu] = useState(false)
   const [showSettingsMenu, setShowSettingsMenu] = useState(false)
@@ -33,7 +36,12 @@ export default function Home() {
   const exportMenuRef = useRef<HTMLDivElement>(null)
   const settingsMenuRef = useRef<HTMLDivElement>(null)
 
-  // Quick keyboard toggle for Zen Mode (Z key)
+  // Sync draft title when active board changes
+  useEffect(() => {
+    setTitleDraft(boardTitle || "Zen Atelier")
+  }, [boardTitle])
+
+  // Quick keyboard shortcuts for Zen Mode, Board Creation & Switcher
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
@@ -42,10 +50,19 @@ export default function Home() {
       if (e.key.toLowerCase() === "z" && !e.ctrlKey && !e.metaKey) {
         setIsZenMode((prev) => !prev)
       }
+      if ((e.ctrlKey || e.metaKey) && e.altKey && e.key.toLowerCase() === "n") {
+        e.preventDefault()
+        acoustics.playPaperDrop()
+        createBoard()
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "b" && !e.altKey && !e.shiftKey) {
+        e.preventDefault()
+        setShowBoardSwitcher((prev) => !prev)
+      }
     }
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [])
+  }, [createBoard])
 
   // Close menus on outside click
   useEffect(() => {
@@ -160,46 +177,95 @@ export default function Home() {
               </svg>
             </button>
 
-            {/* Board Title with Inline Edit */}
-            <div
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-xl backdrop-blur-xl border transition-all ${
-                atmosphere === "hearth"
-                  ? "bg-[#20201e]/90 border-stone-800 text-stone-200 shadow-sm"
-                  : "bg-white/90 border-stone-200/90 text-stone-900 shadow-sm"
-              }`}
-            >
-              <KumikoLogo size={18} className="shrink-0" theme={atmosphere} />
-              {isEditingTitle ? (
-                <input
-                  type="text"
-                  autoFocus
-                  onFocus={(e) => e.target.select()}
-                  value={titleDraft}
-                  onChange={(e) => setTitleDraft(e.target.value)}
-                  onBlur={handleCommitTitle}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") handleCommitTitle()
-                    if (e.key === "Escape") {
+            {/* Board Title & Board Switcher Capsule */}
+            <div className="relative">
+              <div
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl backdrop-blur-xl border transition-all ${
+                  atmosphere === "hearth"
+                    ? "bg-[#20201e]/90 border-stone-800 text-stone-200 shadow-sm"
+                    : "bg-white/90 border-stone-200/90 text-stone-900 shadow-sm"
+                }`}
+              >
+                <KumikoLogo size={18} className="shrink-0" theme={atmosphere} />
+                {isEditingTitle ? (
+                  <input
+                    type="text"
+                    autoFocus
+                    onFocus={(e) => e.target.select()}
+                    value={titleDraft}
+                    onChange={(e) => setTitleDraft(e.target.value)}
+                    onBlur={handleCommitTitle}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleCommitTitle()
+                      if (e.key === "Escape") {
+                        setTitleDraft(boardTitle)
+                        setIsEditingTitle(false)
+                      }
+                    }}
+                    className="text-xs font-semibold tracking-tight bg-transparent border-b border-stone-400 outline-none w-28 sm:w-36 text-current"
+                  />
+                ) : (
+                  <span
+                    onClick={() => {
                       setTitleDraft(boardTitle)
-                      setIsEditingTitle(false)
-                    }
-                  }}
-                  className="text-xs font-semibold tracking-tight bg-transparent border-b border-stone-400 outline-none w-32 sm:w-40 text-current"
-                />
-              ) : (
-                <span
-                  onClick={() => {
-                    setTitleDraft(boardTitle)
-                    setIsEditingTitle(true)
-                  }}
-                  className="text-xs font-semibold tracking-tight cursor-pointer hover:opacity-80 transition-opacity truncate max-w-[120px] sm:max-w-[190px] md:max-w-[280px] block"
-                  title="Click to rename board"
+                      setIsEditingTitle(true)
+                    }}
+                    className="text-xs font-semibold tracking-tight cursor-pointer hover:opacity-80 transition-opacity truncate max-w-[100px] sm:max-w-[180px] md:max-w-[240px] block"
+                    title="Click to rename board"
+                  >
+                    {boardTitle || "Zen Atelier"}
+                  </span>
+                )}
+
+                {/* Switcher Toggle Chevron Button */}
+                <button
+                  onClick={() => setShowBoardSwitcher((prev) => !prev)}
+                  className={`p-1 rounded-md transition-colors ${
+                    showBoardSwitcher
+                      ? "bg-stone-500/20 text-current"
+                      : "opacity-60 hover:opacity-100 hover:bg-stone-500/10"
+                  }`}
+                  title="Switch or manage whiteboards (Ctrl+B)"
+                  aria-label="Switch or manage whiteboards"
                 >
-                  {boardTitle || "Zen Atelier"}
-                </span>
-              )}
-              <span className="text-[10px] text-stone-400 font-mono hidden sm:inline">v1.2</span>
+                  <svg
+                    className={`w-3.5 h-3.5 transition-transform duration-200 ${showBoardSwitcher ? "rotate-180" : ""}`}
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <polyline points="6 9 12 15 18 9" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Board Switcher Dropdown */}
+              <BoardSwitcher
+                isOpen={showBoardSwitcher}
+                onClose={() => setShowBoardSwitcher(false)}
+              />
             </div>
+
+            {/* Quick "+ New Board" Direct Button */}
+            <button
+              onClick={() => {
+                acoustics.playPaperDrop()
+                createBoard()
+              }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl backdrop-blur-xl border text-xs font-medium transition-all shadow-sm ${
+                atmosphere === "hearth"
+                  ? "bg-[#20201e]/90 hover:bg-[#282825] text-stone-200 border-stone-800"
+                  : "bg-white/90 hover:bg-stone-50 text-stone-800 border-stone-200/90"
+              }`}
+              title="Create a new blank whiteboard (Ctrl+Alt+N)"
+            >
+              <svg className="w-3.5 h-3.5 text-[#c25e3e]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              <span className="hidden sm:inline">New Board</span>
+            </button>
           </div>
 
           {/* Right Action Island: Atmosphere, Acoustics, Starter, Export, Zen Focus */}

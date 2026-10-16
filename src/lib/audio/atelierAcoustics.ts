@@ -136,6 +136,31 @@ class AtelierAcoustics {
       // Gracefully ignore
     }
   }
+
+  // Clean paper sheet slide onto atelier board
+  public playBoardSlide() {
+    if (!this.enabled) return
+    const ctx = this.initContext()
+    if (!ctx) return
+
+    try {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.type = "sine"
+      osc.frequency.setValueAtTime(320, ctx.currentTime)
+      osc.frequency.exponentialRampToValueAtTime(560, ctx.currentTime + 0.06)
+
+      gain.gain.setValueAtTime(0.04, ctx.currentTime)
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.07)
+
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.start()
+      osc.stop(ctx.currentTime + 0.07)
+    } catch {
+      // Gracefully ignore
+    }
+  }
 }
 
 export const acoustics = new AtelierAcoustics()

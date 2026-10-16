@@ -161,3 +161,17 @@ export interface ZenLayoutConfig {
   showStructureMap: boolean
   structureMapPosition: 'left' | 'right'
 }
+
+export interface BoardRecord {
+  id: string
+  title: string
+  objects: Record<string, CanvasObject>
+  past?: Record<string, CanvasObject>[]
+  future?: Record<string, CanvasObject>[]
+  zoomLevel: number
+  offsetX: number
+  offsetY: number
+  atmosphere?: 'morning' | 'hearth'
+  createdAt: string
+  updatedAt: string
+}

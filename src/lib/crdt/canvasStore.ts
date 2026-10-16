@@ -1,7 +1,25 @@
 // Zustand store for Miro-like canvas state management
 import { create } from 'zustand'
 import { devtools, persist } from 'zustand/middleware'
-import { CanvasObject, ToolType, Point } from '../../types'
+import { CanvasObject, ToolType, Point, BoardRecord } from '../../types'
+
+const createDefaultBoardRecord = (
+  id = "default-board",
+  title = "Zen Atelier",
+  objects = getStarterObjects()
+): BoardRecord => ({
+  id,
+  title,
+  objects,
+  past: [],
+  future: [],
+  zoomLevel: 1,
+  offsetX: 0,
+  offsetY: 0,
+  atmosphere: "morning",
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+})
 
 const getStarterObjects = (): Record<string, CanvasObject> => {
   const now = new Date().toISOString()
@@ -164,6 +182,14 @@ interface CanvasState {
   setBoardTitle: (title: string) => void
   spawnAdjacentNote: (sourceId: string, direction: "right" | "down") => string
 
+  activeBoardId: string
+  boards: Record<string, BoardRecord>
+  createBoard: (title?: string, template?: "blank" | "starter") => string
+  switchBoard: (boardId: string) => void
+  renameBoard: (boardId: string, newTitle: string) => void
+  duplicateBoard: (boardId: string) => string
+  deleteBoard: (boardId: string) => void
+
   updateMultipleObjects: (updates: { id: string; x: number; y: number }[]) => void
 
   undo: () => void
@@ -186,9 +212,248 @@ export const useCanvasStore = create<CanvasState>()(
         future: [],
         atmosphere: "morning",
         boardTitle: "Zen Atelier",
+        activeBoardId: "default-board",
+        boards: {
+          "default-board": createDefaultBoardRecord(),
+        },
 
-        setAtmosphere: (mode) => set({ atmosphere: mode }),
-        setBoardTitle: (title) => set({ boardTitle: title }),
+        setAtmosphere: (mode) =>
+          set((state) => {
+            const currentBoard = state.boards[state.activeBoardId]
+            return {
+              atmosphere: mode,
+              boards: currentBoard
+                ? {
+                    ...state.boards,
+                    [state.activeBoardId]: {
+                      ...currentBoard,
+                      atmosphere: mode,
+                      updatedAt: new Date().toISOString(),
+                    },
+                  }
+                : state.boards,
+            }
+          }),
+
+        setBoardTitle: (title) =>
+          set((state) => {
+            const currentBoard = state.boards[state.activeBoardId]
+            return {
+              boardTitle: title,
+              boards: currentBoard
+                ? {
+                    ...state.boards,
+                    [state.activeBoardId]: {
+                      ...currentBoard,
+                      title,
+                      updatedAt: new Date().toISOString(),
+                    },
+                  }
+                : state.boards,
+            }
+          }),
+
+        createBoard: (title, template = "blank") => {
+          const { activeBoardId, boards, objects, past, future, zoomLevel, offsetX, offsetY, atmosphere, boardTitle } = get()
+          const now = new Date().toISOString()
+          
+          // 1. Snapshot current active board
+          const currentBoardSnapshot: BoardRecord = {
+            id: activeBoardId,
+            title: boardTitle,
+            objects,
+            past,
+            future,
+            zoomLevel,
+            offsetX,
+            offsetY,
+            atmosphere,
+            createdAt: boards[activeBoardId]?.createdAt || now,
+            updatedAt: now,
+          }
+
+          // 2. Generate new board
+          const newId = `board-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`
+          const newTitle = title || `Untitled Atelier ${Object.keys(boards).length + 1}`
+          const newObjects = template === "starter" ? getStarterObjects() : {}
+
+          const newBoard: BoardRecord = {
+            id: newId,
+            title: newTitle,
+            objects: newObjects,
+            past: [],
+            future: [],
+            zoomLevel: 1,
+            offsetX: 0,
+            offsetY: 0,
+            atmosphere,
+            createdAt: now,
+            updatedAt: now,
+          }
+
+          set({
+            boards: {
+              ...boards,
+              [activeBoardId]: currentBoardSnapshot,
+              [newId]: newBoard,
+            },
+            activeBoardId: newId,
+            boardTitle: newTitle,
+            objects: newObjects,
+            selectedObjectIds: [],
+            past: [],
+            future: [],
+            zoomLevel: 1,
+            offsetX: 0,
+            offsetY: 0,
+          })
+
+          return newId
+        },
+
+        switchBoard: (targetId) => {
+          const { activeBoardId, boards, objects, past, future, zoomLevel, offsetX, offsetY, atmosphere, boardTitle } = get()
+          if (targetId === activeBoardId) return
+          const targetBoard = boards[targetId]
+          if (!targetBoard) return
+
+          const now = new Date().toISOString()
+          const currentBoardSnapshot: BoardRecord = {
+            id: activeBoardId,
+            title: boardTitle,
+            objects,
+            past,
+            future,
+            zoomLevel,
+            offsetX,
+            offsetY,
+            atmosphere,
+            createdAt: boards[activeBoardId]?.createdAt || now,
+            updatedAt: now,
+          }
+
+          set({
+            boards: {
+              ...boards,
+              [activeBoardId]: currentBoardSnapshot,
+            },
+            activeBoardId: targetId,
+            boardTitle: targetBoard.title,
+            objects: targetBoard.objects || {},
+            selectedObjectIds: [],
+            past: targetBoard.past || [],
+            future: targetBoard.future || [],
+            zoomLevel: targetBoard.zoomLevel ?? 1,
+            offsetX: targetBoard.offsetX ?? 0,
+            offsetY: targetBoard.offsetY ?? 0,
+            atmosphere: targetBoard.atmosphere || atmosphere,
+          })
+        },
+
+        renameBoard: (boardId, newTitle) => {
+          set((state) => {
+            const target = state.boards[boardId]
+            if (!target) return state
+            const updated = {
+              ...state.boards,
+              [boardId]: {
+                ...target,
+                title: newTitle,
+                updatedAt: new Date().toISOString(),
+              },
+            }
+            return {
+              boards: updated,
+              boardTitle: boardId === state.activeBoardId ? newTitle : state.boardTitle,
+            }
+          })
+        },
+
+        duplicateBoard: (boardId) => {
+          const { boards, activeBoardId, objects, past, future, zoomLevel, offsetX, offsetY, atmosphere, boardTitle } = get()
+          const now = new Date().toISOString()
+          const sourceBoard = boardId === activeBoardId ? {
+            id: activeBoardId,
+            title: boardTitle,
+            objects,
+            past,
+            future,
+            zoomLevel,
+            offsetX,
+            offsetY,
+            atmosphere,
+            createdAt: boards[activeBoardId]?.createdAt || now,
+            updatedAt: now,
+          } : boards[boardId]
+
+          if (!sourceBoard) return ""
+
+          const newId = `board-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`
+          const newTitle = `${sourceBoard.title} (Copy)`
+          
+          const clonedObjects: Record<string, CanvasObject> = {}
+          Object.values(sourceBoard.objects).forEach((o) => {
+            const freshId = `${o.type}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`
+            clonedObjects[freshId] = {
+              ...o,
+              id: freshId,
+              x: o.x + 30,
+              y: o.y + 30,
+              updatedAt: now,
+            }
+          })
+
+          const newBoard: BoardRecord = {
+            ...sourceBoard,
+            id: newId,
+            title: newTitle,
+            objects: clonedObjects,
+            past: [],
+            future: [],
+            createdAt: now,
+            updatedAt: now,
+          }
+
+          set((state) => ({
+            boards: {
+              ...state.boards,
+              [newId]: newBoard,
+            },
+          }))
+
+          return newId
+        },
+
+        deleteBoard: (boardId) => {
+          const { boards, activeBoardId } = get()
+          const boardKeys = Object.keys(boards)
+          if (boardKeys.length <= 1) {
+            return
+          }
+
+          const newBoards = { ...boards }
+          delete newBoards[boardId]
+
+          if (boardId === activeBoardId) {
+            const nextRemainingId = Object.keys(newBoards)[0]
+            const nextBoard = newBoards[nextRemainingId]
+            set({
+              boards: newBoards,
+              activeBoardId: nextRemainingId,
+              boardTitle: nextBoard.title,
+              objects: nextBoard.objects || {},
+              selectedObjectIds: [],
+              past: nextBoard.past || [],
+              future: nextBoard.future || [],
+              zoomLevel: nextBoard.zoomLevel ?? 1,
+              offsetX: nextBoard.offsetX ?? 0,
+              offsetY: nextBoard.offsetY ?? 0,
+              atmosphere: nextBoard.atmosphere || "morning",
+            })
+          } else {
+            set({ boards: newBoards })
+          }
+        },
 
         updateMultipleObjects: (updates) => {
           set((state) => {
@@ -639,15 +904,57 @@ export const useCanvasStore = create<CanvasState>()(
       }),
       {
         name: 'zenflow-whiteboard-v3', // Clean key to purge any stale buggy state
-        partialize: (state) => ({
-          objects: state.objects,
-          selectedObjectIds: state.selectedObjectIds,
-          zoomLevel: state.zoomLevel,
-          offsetX: state.offsetX,
-          offsetY: state.offsetY,
-          atmosphere: state.atmosphere,
-          boardTitle: state.boardTitle,
-        }),
+        partialize: (state) => {
+          const currentBoard: BoardRecord = {
+            id: state.activeBoardId,
+            title: state.boardTitle,
+            objects: state.objects,
+            past: state.past,
+            future: state.future,
+            zoomLevel: state.zoomLevel,
+            offsetX: state.offsetX,
+            offsetY: state.offsetY,
+            atmosphere: state.atmosphere,
+            createdAt: state.boards[state.activeBoardId]?.createdAt || new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          }
+          return {
+            activeBoardId: state.activeBoardId,
+            boards: {
+              ...state.boards,
+              [state.activeBoardId]: currentBoard,
+            },
+            objects: state.objects,
+            selectedObjectIds: state.selectedObjectIds,
+            zoomLevel: state.zoomLevel,
+            offsetX: state.offsetX,
+            offsetY: state.offsetY,
+            atmosphere: state.atmosphere,
+            boardTitle: state.boardTitle,
+          }
+        },
+        onRehydrateStorage: () => (state) => {
+          if (state) {
+            if (!state.boards || Object.keys(state.boards).length === 0) {
+              const defaultId = state.activeBoardId || "default-board"
+              const defaultRecord: BoardRecord = {
+                id: defaultId,
+                title: state.boardTitle || "Zen Atelier",
+                objects: state.objects || getStarterObjects(),
+                past: state.past || [],
+                future: state.future || [],
+                zoomLevel: state.zoomLevel ?? 1,
+                offsetX: state.offsetX ?? 0,
+                offsetY: state.offsetY ?? 0,
+                atmosphere: state.atmosphere || "morning",
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              }
+              state.boards = { [defaultId]: defaultRecord }
+              state.activeBoardId = defaultId
+            }
+          }
+        },
       }
     )
   )
