@@ -46,7 +46,7 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     locale: "en_US",
-    url: "https://zenflow.vercel.app",
+    url: "https://zen-flow-whiteboard.vercel.app",
     siteName: "ZenFlow Atelier",
     title: "ZenFlow — Paper & Stone Spatial Atelier",
     description:

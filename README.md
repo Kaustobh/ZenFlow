@@ -2,10 +2,13 @@
 
 > A distraction-free, Japandi-inspired spatial whiteboard engineered with tactile acoustics, kinetic glide navigation, and frictionless thought-chaining.
 
+[![Live Demo](https://img.shields.io/badge/Demo-zen--flow--whiteboard.vercel.app-000?style=flat&logo=vercel&logoColor=white)](https://zen-flow-whiteboard.vercel.app/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Next.js](https://img.shields.io/badge/Next.js-15-black?style=flat&logo=next.js&logoColor=white)](https://nextjs.org/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind-38B2AC?style=flat&logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
-[![Zustand](https://img.shields.io/badge/Zustand-State-orange?style=flat)](https://github.com/pmndrs/zustand)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+> **Live Atelier Demo**: 🌐 **[https://zen-flow-whiteboard.vercel.app/](https://zen-flow-whiteboard.vercel.app/)**
 
 ---
 
@@ -68,6 +71,8 @@ Modern collaborative whiteboards suffer from severe visual bloat—noisy toolbar
 | `Ctrl + D` | Duplicate selected objects |
 | `Shift + 1` | Fit all objects in atelier |
 | `Ctrl + 0` | Reset zoom to 100% |
+| `Ctrl + Alt + N` | Create new whiteboard |
+| `Ctrl + B` | Toggle Atelier Board Switcher |
 | `Z` | Toggle Zen Focus Mode |
 | `Backspace` / `Del` | Delete selected objects |
 
