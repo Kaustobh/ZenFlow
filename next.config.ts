@@ -9,6 +9,7 @@ const nextConfig: NextConfig = {
     // Strictly checked via tsc --noEmit locally
     ignoreBuildErrors: false,
   },
+  serverExternalPackages: ["canvaskit-wasm"],
 };
 
 export default nextConfig;
